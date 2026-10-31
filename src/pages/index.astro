@@ -1,0 +1,317 @@
+---
+import Base from '../layouts/Base.astro';
+import { createGroup } from '../lib/groups.ts';
+import { field, LIMITS, parseMemberNames, requiredText } from '../lib/validate.ts';
+
+let errors: { name?: string; members?: string } = {};
+let values = { name: '', members: '' };
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  values = { name: field(form, 'name').slice(0, 500), members: field(form, 'members').slice(0, 5000) };
+  const name = requiredText(values.name, LIMITS.groupName, 'un nombre para el grupo');
+  const members = parseMemberNames(values.members);
+  if (name.ok && members.ok) {
+    const id = await createGroup(name.value, members.value);
+    return Astro.redirect(`/g/${id}?ok=creado`, 303);
+  }
+  errors = { name: name.ok ? undefined : name.error, members: members.ok ? undefined : members.error };
+  Astro.response.status = 422;
+}
+
+const site = Astro.site ?? Astro.url;
+// Datos estructurados para buscadores y asistentes. Solo texto fijo; el < se escapa por si acaso.
+const jsonLd = JSON.stringify({
+  '@context': 'https://schema.org',
+  '@type': 'WebApplication',
+  name: 'Cuentas claras',
+  alternateName: 'Gastos compartidos',
+  url: new URL('/', site).href,
+  description:
+    'Web gratuita para repartir los gastos de un viaje, una cena o un piso compartido a partes iguales, por porcentajes o por importes, y calcular el mínimo de transferencias para quedar en paz. Sin registrarse.',
+  applicationCategory: 'FinanceApplication',
+  operatingSystem: 'Cualquiera (navegador web)',
+  inLanguage: 'es-ES',
+  isAccessibleForFree: true,
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'EUR' },
+  featureList: [
+    'Grupos sin crear cuenta, compartidos con un enlace privado',
+    'Reparto a partes iguales, por porcentajes o por importes exactos',
+    'Saldos de cada persona al momento',
+    'Mínimo número de transferencias para dejar las cuentas a cero',
+  ],
+  author: { '@type': 'Person', name: 'Rubén Tur', url: 'https://github.com/Ruben-Tur' },
+}).replace(/</g, '\\u003c');
+---
+
+<Base>
+  <script type="application/ld+json" slot="head" set:html={jsonLd} />
+
+  <div class="container page landing">
+    <section class="hero" aria-labelledby="titulo">
+      <h1 id="titulo">Reparte los gastos del grupo y salda las cuentas con el mínimo de pagos</h1>
+      <p class="hero__lead">
+        <strong>Cuentas claras</strong> es una web gratuita para apuntar quién ha pagado qué en un viaje, una cena o un
+        piso compartido. Reparte cada gasto a partes iguales, por porcentajes o por importes, te dice al momento cuánto
+        debe o le deben a cada persona y calcula el menor número de transferencias para dejarlo todo a cero.
+      </p>
+      <p class="hero__note">Sin registrarse: el grupo se comparte con un enlace privado.</p>
+    </section>
+
+    <section class="card create" aria-labelledby="crear">
+      <h2 id="crear" class="card__title">Crea un grupo</h2>
+      {
+        (errors.name || errors.members) && (
+          <div class="notice notice--error" role="alert">
+            <strong>Revisa el formulario:</strong>
+            <ul>
+              {errors.name && <li>{errors.name}</li>}
+              {errors.members && <li>{errors.members}</li>}
+            </ul>
+          </div>
+        )
+      }
+      <form method="post" class="create__form" novalidate>
+        <div class="field">
+          <label for="name">Nombre del grupo</label>
+          <input
+            id="name"
+            name="name"
+            type="text"
+            required
+            maxlength={LIMITS.groupName}
+            placeholder="Viaje a Lisboa"
+            value={values.name}
+            autocomplete="off"
+            aria-invalid={errors.name ? 'true' : undefined}
+            aria-describedby={errors.name ? 'name-error' : undefined}
+          />
+          {errors.name && <p class="field-error" id="name-error">{errors.name}</p>}
+        </div>
+        <div class="field">
+          <label for="members">Personas</label>
+          <textarea
+            id="members"
+            name="members"
+            rows="5"
+            required
+            placeholder={'Ana\nLuis\nMarta\nPablo'}
+            aria-invalid={errors.members ? 'true' : undefined}
+            aria-describedby={errors.members ? 'members-hint members-error' : 'members-hint'}>{values.members}</textarea
+          >
+          <p class="hint" id="members-hint">
+            Una por línea, entre 2 y {LIMITS.membersPerGroup}. Podrás añadir más después.
+          </p>
+          {errors.members && <p class="field-error" id="members-error">{errors.members}</p>}
+        </div>
+        <button class="button button--block" type="submit">Crear grupo</button>
+      </form>
+    </section>
+
+    <section class="recent card card--soft" id="recientes" aria-labelledby="recientes-titulo" hidden>
+      <h2 id="recientes-titulo" class="card__title">Tus grupos en este navegador</h2>
+      <ul role="list" class="recent__list"></ul>
+      <p class="hint">Se guardan solo en este navegador para que no pierdas los enlaces.</p>
+    </section>
+
+    <section class="how" aria-labelledby="como">
+      <h2 id="como">Cómo funciona</h2>
+      <ol role="list" class="how__steps">
+        <li>
+          <span class="how__n mono" aria-hidden="true">01</span>
+          <h3>Crea el grupo</h3>
+          <p>Ponle nombre y escribe quién participa. No hay cuentas ni contraseñas: el enlace del grupo es la llave.</p>
+        </li>
+        <li>
+          <span class="how__n mono" aria-hidden="true">02</span>
+          <h3>Apunta los gastos</h3>
+          <p>
+            Concepto, importe, quién pagó y entre quién se reparte: a partes iguales, por porcentajes o con el importe
+            exacto de cada uno. La web comprueba que el reparto cuadra al céntimo.
+          </p>
+        </li>
+        <li>
+          <span class="how__n mono" aria-hidden="true">03</span>
+          <h3>Salda las cuentas</h3>
+          <p>
+            Mira el saldo de cada persona y el plan con el mínimo de transferencias. Cuando alguien pague, márcalo como
+            pagado y los saldos se actualizan.
+          </p>
+        </li>
+      </ol>
+    </section>
+
+    <section class="faq" aria-labelledby="preguntas">
+      <h2 id="preguntas">Preguntas frecuentes</h2>
+      <dl>
+        <div>
+          <dt>¿Quién puede ver los gastos de un grupo?</dt>
+          <dd>
+            Solo quien tenga el enlace. Es una dirección aleatoria de 144 bits imposible de adivinar, las páginas de grupo
+            no se indexan en buscadores y la web no envía la dirección a otras webs al salir de ella.
+          </dd>
+        </div>
+        <div>
+          <dt>¿Cómo se calcula el mínimo de transferencias?</dt>
+          <dd>
+            Se buscan los subgrupos de personas cuyas deudas se cancelan entre sí: cada subgrupo de n personas se salda
+            con n − 1 pagos. Hasta 20 personas con saldo el resultado es el mínimo exacto; con más, se usa un método
+            aproximado que nunca necesita más de un pago por persona.
+          </dd>
+        </div>
+        <div>
+          <dt>¿Se pierden céntimos al repartir?</dt>
+          <dd>
+            No. Los importes se guardan en céntimos enteros y, si un gasto no se divide exacto (10 € entre 3), los
+            céntimos sobrantes se asignan siempre a las mismas personas: la suma cuadra con el total.
+          </dd>
+        </div>
+      </dl>
+    </section>
+  </div>
+</Base>
+
+<script>
+  // «Tus grupos en este navegador»: lista guardada en localStorage por la página de cada grupo.
+  // Se pinta con textContent (nunca innerHTML) y solo se aceptan ids con el formato esperado.
+  const section = document.getElementById('recientes');
+  const list = section?.querySelector('ul');
+  let groups: { id: string; name: string }[] = [];
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem('cuentas-claras:grupos') ?? '[]');
+    if (Array.isArray(parsed)) groups = parsed;
+  } catch {
+    // Sin almacenamiento local (modo privado, bloqueado…): la sección sigue oculta.
+  }
+  const valid = groups.filter(
+    (g) => g && typeof g.id === 'string' && /^[A-Za-z0-9_-]{24}$/.test(g.id) && typeof g.name === 'string',
+  );
+  if (section && list && valid.length > 0) {
+    for (const g of valid) {
+      const item = document.createElement('li');
+      const link = document.createElement('a');
+      link.href = `/g/${g.id}`;
+      link.textContent = g.name.slice(0, 60);
+      item.append(link);
+      list.append(item);
+    }
+    section.hidden = false;
+  }
+</script>
+
+<style>
+  .landing {
+    display: grid;
+    gap: var(--s6) var(--s7);
+  }
+
+  @media (min-width: 900px) {
+    .landing {
+      grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+      align-items: start;
+    }
+
+    .hero {
+      grid-row: span 2;
+      padding-top: var(--s4);
+    }
+
+    .how,
+    .faq {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .hero {
+    display: grid;
+    gap: var(--s4);
+  }
+
+  .hero h1 {
+    font-size: var(--text-2xl);
+    letter-spacing: -0.025em;
+  }
+
+  .hero__lead {
+    font-size: var(--text-md);
+    max-width: 38rem;
+  }
+
+  .hero__note {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .create__form {
+    display: grid;
+    gap: var(--s4);
+  }
+
+  .create .notice {
+    margin-bottom: var(--s4);
+  }
+
+  .recent__list {
+    display: grid;
+    gap: var(--s2);
+    margin-bottom: var(--s3);
+  }
+
+  .recent__list :global(a) {
+    font-weight: 500;
+  }
+
+  .how h2,
+  .faq h2 {
+    font-size: var(--text-lg);
+    margin-bottom: var(--s5);
+  }
+
+  .how__steps {
+    display: grid;
+    gap: var(--s5);
+  }
+
+  @media (min-width: 768px) {
+    .how__steps {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .how__steps li {
+    display: grid;
+    gap: var(--s2);
+    align-content: start;
+    padding-top: var(--s4);
+    border-top: 1px solid var(--line);
+  }
+
+  .how__n {
+    color: var(--accent);
+    font-size: var(--text-sm);
+  }
+
+  .how h3 {
+    font-size: var(--text-base);
+  }
+
+  .how p,
+  .faq dd {
+    color: var(--muted);
+  }
+
+  .faq dl {
+    display: grid;
+    gap: var(--s5);
+    max-width: 48rem;
+  }
+
+  .faq dt {
+    font-weight: 600;
+    margin-bottom: var(--s1);
+  }
+
+  .faq dd {
+    margin: 0;
+  }
+</style>

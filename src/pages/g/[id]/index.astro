@@ -1,0 +1,536 @@
+---
+import Base from '../../../layouts/Base.astro';
+import { FLASH, formatDate, MODE_LABELS, moneyClass, plural } from '../../../lib/format.ts';
+import { addSettlement, deleteSettlement, getGroupData, UserError } from '../../../lib/groups.ts';
+import { isGroupId } from '../../../lib/ids.ts';
+import { formatEuros } from '../../../lib/money.ts';
+import { field, parseId } from '../../../lib/validate.ts';
+
+const { id } = Astro.params;
+if (!isGroupId(id)) return Astro.rewrite('/404');
+
+let error: string | null = null;
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  const action = field(form, 'action');
+  try {
+    if (action === 'settle') {
+      // Solo se registra un pago que esté en el plan actual: si otra persona ya lo marcó o el plan ha
+      // cambiado entre medias, no se duplica.
+      const current = await getGroupData(id);
+      if (!current) return Astro.rewrite('/404');
+      const fromId = parseId(field(form, 'from'));
+      const toId = parseId(field(form, 'to'));
+      const amount = Number(field(form, 'amount'));
+      const match = current.plan.transfers.find((t) => t.fromId === fromId && t.toId === toId && t.amountCents === amount);
+      if (!match) throw new UserError('Ese pago ya no está en el plan (puede que alguien lo haya marcado ya). Revisa el plan actualizado.');
+      await addSettlement(id, match.fromId, match.toId, match.amountCents);
+      return Astro.redirect(`/g/${id}?ok=pago#plan`, 303);
+    }
+    if (action === 'undo-settlement') {
+      const settlementId = parseId(field(form, 'settlement'));
+      if (settlementId === null) throw new UserError('Pago no válido.');
+      await deleteSettlement(id, settlementId);
+      return Astro.redirect(`/g/${id}?ok=pago-deshecho#pagos`, 303);
+    }
+    throw new UserError('Acción no válida.');
+  } catch (e) {
+    if (!(e instanceof UserError)) throw e;
+    error = e.message;
+    Astro.response.status = 422;
+  }
+}
+
+const data = await getGroupData(id);
+if (!data) return Astro.rewrite('/404');
+
+const { group, members, expenses, settlements, balances, plan, totalCents } = data;
+const nameOf = new Map(members.map((m) => [m.id, m.name]));
+const flash = FLASH[Astro.url.searchParams.get('ok') ?? ''];
+const shareUrl = new URL(`/g/${id}`, Astro.url).href;
+const maxAbs = Math.max(1, ...balances.map((b) => Math.abs(b.cents)));
+// Plan ordenado por quien paga y luego quien cobra, en el orden del grupo: más fácil de leer.
+const order = new Map(members.map((m, i) => [m.id, i]));
+const transfers = [...plan.transfers].sort(
+  (a, b) => order.get(a.fromId)! - order.get(b.fromId)! || order.get(a.toId)! - order.get(b.toId)!,
+);
+---
+
+<Base title={group.name} private>
+  <a slot="header-end" class="site-header__link" href="/">Nuevo grupo</a>
+
+  <div class="container page">
+    {flash && <p class="notice flash" role="status">{flash}</p>}
+    {
+      error && (
+        <p class="notice notice--error flash" role="alert">
+          <strong>No se ha podido hacer:</strong> {error}
+        </p>
+      )
+    }
+
+    <div class="group" data-group-id={group.id} data-group-name={group.name}>
+      <header class="group__head">
+        <h1>{group.name}</h1>
+        <p class="group__meta">
+          {plural(members.length, 'persona', 'personas')} · {plural(expenses.length, 'gasto', 'gastos')} ·{' '}
+          <span class="mono">{formatEuros(totalCents)}</span>
+        </p>
+        <div class="group__actions">
+          <a class="button" href={`/g/${id}/gastos/nuevo`}>Añadir gasto</a>
+          <a class="button button--secondary" href={`/g/${id}/personas`}>Personas y grupo</a>
+        </div>
+      </header>
+
+      <section class="group__expenses" aria-labelledby="gastos">
+        <h2 id="gastos" class="section-title">Gastos</h2>
+        {
+          expenses.length === 0 ? (
+            <p class="empty">
+              Todavía no hay gastos. <a href={`/g/${id}/gastos/nuevo`}>Añade el primero</a>: quién pagó, cuánto y entre
+              quién se reparte.
+            </p>
+          ) : (
+            <ul role="list" class="expenses">
+              {expenses.map((e) => (
+                <li>
+                  <a class="expense" href={`/g/${id}/gastos/${e.id}`}>
+                    <span class="expense__main">
+                      <span class="expense__concept">{e.concept}</span>
+                      <span class="muted"> · {nameOf.get(e.payerId)}</span>
+                    </span>
+                    <span class="expense__meta">
+                      <span class="mono">{formatDate(e.date)}</span> · {MODE_LABELS[e.splitMode]}
+                      {e.splitMode === 'equal' && e.shares.length !== members.length && ` entre ${e.shares.length}`}
+                    </span>
+                    <span class="expense__amount money">{formatEuros(e.amountCents)}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )
+        }
+      </section>
+
+      <aside class="group__side">
+        <section class="card card--accent plan" id="plan" aria-labelledby="plan-titulo">
+          <h2 id="plan-titulo" class="card__title">
+            Para quedar en paz{transfers.length > 0 && <> · {plural(transfers.length, 'pago', 'pagos')}</>}
+          </h2>
+          {
+            transfers.length === 0 ? (
+              <p class="plan__done">{expenses.length === 0 ? 'Cuando haya gastos, aquí verás quién paga a quién.' : 'Todo el mundo está en paz. No hace falta ningún pago.'}</p>
+            ) : (
+              <ul role="list" class="plan__list">
+                {transfers.map((t) => (
+                  <li class="plan__row">
+                    <span class="plan__who">
+                      {nameOf.get(t.fromId)} <span class="plan__arrow" aria-hidden="true">→</span>
+                      <span class="sr-only">paga a</span> {nameOf.get(t.toId)}
+                    </span>
+                    <span class="plan__amount money">{formatEuros(t.amountCents)}</span>
+                    <form method="post" class="plan__form">
+                      <input type="hidden" name="action" value="settle" />
+                      <input type="hidden" name="from" value={t.fromId} />
+                      <input type="hidden" name="to" value={t.toId} />
+                      <input type="hidden" name="amount" value={t.amountCents} />
+                      <button class="button button--small button--secondary" type="submit">
+                        Marcar como pagado
+                        <span class="sr-only">
+                          : {nameOf.get(t.fromId)} a {nameOf.get(t.toId)}, {formatEuros(t.amountCents)}
+                        </span>
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            )
+          }
+          {
+            transfers.length > 0 && (
+              <p class="plan__note">
+                {plan.exact
+                  ? 'Es el mínimo número de transferencias posible.'
+                  : 'Con tantas personas se usa un cálculo aproximado: puede que exista un plan con algún pago menos.'}
+              </p>
+            )
+          }
+        </section>
+
+        <section class="card balances" aria-labelledby="saldos">
+          <h2 id="saldos" class="card__title">Saldos</h2>
+          <ul role="list" class="balances__list">
+            {
+              balances.map((b) => {
+                const width = (Math.abs(b.cents) / maxAbs) * 50;
+                return (
+                  <li class="balance">
+                    <span class="balance__name">{nameOf.get(b.memberId)}</span>
+                    <svg class="balance__bar" viewBox="0 0 100 8" preserveAspectRatio="none" aria-hidden="true">
+                      <line x1="50" y1="0" x2="50" y2="8" class="balance__axis" />
+                      {b.cents !== 0 && (
+                        <rect
+                          class={b.cents > 0 ? 'balance__pos' : 'balance__neg'}
+                          x={b.cents > 0 ? 50 : 50 - width}
+                          y="1"
+                          width={width}
+                          height="6"
+                          rx="1"
+                        />
+                      )}
+                    </svg>
+                    <span class={`balance__amount ${moneyClass(b.cents)}`}>
+                      <span class="sr-only">{b.cents > 0 ? 'le deben' : b.cents < 0 ? 'debe' : 'en paz'}</span>
+                      {formatEuros(b.cents, { sign: true })}
+                    </span>
+                  </li>
+                );
+              })
+            }
+          </ul>
+          <p class="hint">En verde, lo que le deben; en negativo, lo que debe.</p>
+        </section>
+
+        {
+          settlements.length > 0 && (
+            <section class="card card--soft" id="pagos" aria-labelledby="pagos-titulo">
+              <h2 id="pagos-titulo" class="card__title">Pagos registrados</h2>
+              <ul role="list" class="settlements">
+                {settlements.map((s) => (
+                  <li class="settlement">
+                    <span>
+                      {nameOf.get(s.fromId)} pagó <span class="money">{formatEuros(s.amountCents)}</span> a{' '}
+                      {nameOf.get(s.toId)}
+                    </span>
+                    <form method="post">
+                      <input type="hidden" name="action" value="undo-settlement" />
+                      <input type="hidden" name="settlement" value={s.id} />
+                      <button class="link-button" type="submit">
+                        Deshacer<span class="sr-only"> el pago de {nameOf.get(s.fromId)} a {nameOf.get(s.toId)}</span>
+                      </button>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )
+        }
+
+        <section class="card card--soft share" aria-labelledby="compartir">
+          <h2 id="compartir" class="card__title">Compartir</h2>
+          <p class="hint">
+            Quien tenga este enlace puede ver y editar el grupo, sin crear cuenta. Compártelo solo con el grupo.
+          </p>
+          <div class="share__row">
+            <label for="share-url" class="sr-only">Enlace del grupo</label>
+            <input id="share-url" class="mono share__url" type="text" readonly value={shareUrl} />
+            <button class="button button--small" type="button" id="copy" hidden>Copiar</button>
+          </div>
+          <p class="hint share__status" id="copy-status" role="status"></p>
+        </section>
+      </aside>
+    </div>
+  </div>
+</Base>
+
+<script>
+  // Mejora progresiva: copiar el enlace y recordarlo en este navegador (lista de la portada).
+  const root = document.querySelector<HTMLElement>('.group');
+  const input = document.getElementById('share-url') as HTMLInputElement | null;
+  const copy = document.getElementById('copy');
+  const status = document.getElementById('copy-status');
+
+  if (copy && input && status && navigator.clipboard) {
+    copy.hidden = false;
+    copy.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(input.value);
+        status.textContent = 'Enlace copiado.';
+      } catch {
+        input.select();
+        status.textContent = 'No se ha podido copiar: selecciona el enlace y cópialo a mano.';
+      }
+    });
+  }
+  input?.addEventListener('focus', () => input.select());
+
+  if (root?.dataset.groupId) {
+    try {
+      const key = 'cuentas-claras:grupos';
+      const saved: unknown = JSON.parse(localStorage.getItem(key) ?? '[]');
+      const list = (Array.isArray(saved) ? saved : []).filter((g) => g?.id !== root.dataset.groupId);
+      list.unshift({ id: root.dataset.groupId, name: root.dataset.groupName ?? '' });
+      localStorage.setItem(key, JSON.stringify(list.slice(0, 8)));
+    } catch {
+      // Sin almacenamiento local: no pasa nada, solo no se recuerda el grupo.
+    }
+  }
+</script>
+
+<style>
+  .flash {
+    margin-bottom: var(--s5);
+  }
+
+  /* Móvil y tablet: una columna con lo más útil arriba (plan y saldos), luego gastos, pagos y compartir. */
+  .group {
+    display: flex;
+    flex-direction: column;
+    gap: var(--s6);
+  }
+
+  .group__side {
+    display: contents;
+  }
+
+  .plan {
+    order: 1;
+  }
+
+  .balances {
+    order: 2;
+  }
+
+  .group__expenses {
+    order: 3;
+  }
+
+  #pagos {
+    order: 4;
+  }
+
+  .share {
+    order: 5;
+  }
+
+  /* Escritorio: gastos a la izquierda y tarjetas de saldos a la derecha. */
+  @media (min-width: 900px) {
+    .group {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+      grid-template-areas: 'head side' 'expenses side';
+      grid-template-rows: auto 1fr;
+      gap: var(--s6) var(--s7);
+      align-items: start;
+    }
+
+    .group__side {
+      grid-area: side;
+      display: grid;
+      gap: var(--s5);
+      min-width: 0;
+    }
+
+    .group__head {
+      grid-area: head;
+    }
+
+    .group__expenses {
+      grid-area: expenses;
+    }
+  }
+
+  .group__head {
+    display: grid;
+    gap: var(--s2);
+  }
+
+  .group__head h1 {
+    font-size: var(--text-xl);
+    overflow-wrap: anywhere;
+  }
+
+  .group__meta {
+    color: var(--muted);
+  }
+
+  .group__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s3);
+    margin-top: var(--s3);
+  }
+
+  .group__expenses {
+    min-width: 0;
+  }
+
+  .section-title {
+    font-size: var(--text-lg);
+    padding-bottom: var(--s3);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .empty {
+    padding-block: var(--s5);
+    color: var(--muted);
+  }
+
+  /* ---------- Gastos ---------- */
+
+  .expenses li + li {
+    border-top: 1px solid var(--line);
+  }
+
+  .expense {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--s1) var(--s4);
+    padding: var(--s4) var(--s2);
+    margin-inline: calc(-1 * var(--s2));
+    border-radius: var(--radius);
+    text-decoration: none;
+  }
+
+  .expense:hover {
+    background: var(--surface);
+  }
+
+  .expense__main {
+    font-size: var(--text-md);
+    overflow-wrap: anywhere;
+  }
+
+  .expense__concept {
+    font-weight: 500;
+  }
+
+  .expense__meta {
+    grid-column: 1;
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+
+  .expense__amount {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    align-self: center;
+    font-size: var(--text-md);
+  }
+
+  /* ---------- Plan para quedar en paz ---------- */
+
+  .plan__list {
+    border-top: 1px solid var(--accent-line);
+  }
+
+  .plan__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: var(--s2) var(--s4);
+    padding-block: var(--s4);
+    border-bottom: 1px solid var(--accent-line);
+  }
+
+  .plan__who {
+    font-size: var(--text-md);
+    font-weight: 500;
+    overflow-wrap: anywhere;
+  }
+
+  .plan__arrow {
+    color: var(--muted);
+    margin-inline: var(--s1);
+  }
+
+  .plan__amount {
+    font-size: var(--text-md);
+    font-weight: 600;
+  }
+
+  .plan__form {
+    grid-column: 1 / -1;
+  }
+
+  .plan__note,
+  .plan__done {
+    margin-top: var(--s4);
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+
+  .plan__done {
+    margin-top: 0;
+  }
+
+  /* ---------- Saldos ---------- */
+
+  .balances__list {
+    display: grid;
+    gap: var(--s3);
+    margin-bottom: var(--s4);
+  }
+
+  .balance {
+    display: grid;
+    grid-template-columns: minmax(4.5rem, 1fr) minmax(3rem, 1.2fr) auto;
+    align-items: center;
+    gap: var(--s3);
+  }
+
+  .balance__name {
+    overflow-wrap: anywhere;
+  }
+
+  .balance__bar {
+    width: 100%;
+    height: 0.5rem;
+  }
+
+  .balance__axis {
+    stroke: var(--line-strong);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .balance__pos {
+    fill: var(--positive);
+  }
+
+  .balance__neg {
+    fill: var(--negative);
+  }
+
+  .balance__amount {
+    min-width: 7.5rem;
+  }
+
+  /* ---------- Pagos registrados ---------- */
+
+  .settlements {
+    display: grid;
+    gap: var(--s3);
+  }
+
+  .settlement {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: var(--s1) var(--s3);
+  }
+
+  /* ---------- Compartir ---------- */
+
+  .share__row {
+    display: flex;
+    gap: var(--s2);
+    margin-top: var(--s3);
+  }
+
+  .share__url {
+    min-width: 0;
+    font-size: var(--text-sm);
+    background: var(--bg);
+  }
+
+  .share__status:empty {
+    display: none;
+  }
+
+  .share__status {
+    margin-top: var(--s2);
+  }
+</style>

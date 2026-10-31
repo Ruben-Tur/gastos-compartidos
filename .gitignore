@@ -1,0 +1,22 @@
+# build
+dist/
+.astro/
+
+# dependencias
+node_modules/
+
+# datos locales (base de datos SQLite)
+/data/
+
+# entorno
+.env
+.env.*
+!.env.example
+
+# logs y sistema
+npm-debug.log*
+*.log
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json

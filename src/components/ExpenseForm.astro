@@ -1,0 +1,422 @@
+---
+/**
+ * Formulario de gasto (nuevo y edición). Funciona sin JavaScript: el cambio de columnas según el modo
+ * de reparto es CSS (:has) y la validación la hace el servidor. El script solo añade la vista previa
+ * del reparto y la suma en vivo, con las mismas funciones que usa el servidor.
+ */
+import type { ExpenseErrors, ExpenseFormValues } from '../lib/expense-form.ts';
+import type { Member } from '../lib/groups.ts';
+import { LIMITS } from '../lib/validate.ts';
+
+interface Props {
+  members: Member[];
+  values: ExpenseFormValues;
+  errors: ExpenseErrors;
+  submitLabel: string;
+  cancelHref: string;
+}
+
+const { members, values, errors, submitLabel, cancelHref } = Astro.props;
+const messages = Object.values(errors);
+const modes = [
+  { value: 'equal', label: 'A partes iguales' },
+  { value: 'percent', label: 'Por porcentajes' },
+  { value: 'exact', label: 'Por importes' },
+] as const;
+const invalid = (key: keyof ExpenseErrors) => (errors[key] ? 'true' : undefined);
+const described = (key: keyof ExpenseErrors) => (errors[key] ? `${key}-error` : undefined);
+---
+
+<form method="post" class="expense-form card" id="expense-form" novalidate>
+  <input type="hidden" name="action" value="save" />
+  {
+    messages.length > 0 && (
+      <div class="notice notice--error" role="alert">
+        <strong>Revisa el gasto:</strong>
+        <ul>
+          {messages.map((m) => (
+            <li>{m}</li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
+
+  <div class="field">
+    <label for="concept">Concepto</label>
+    <input
+      id="concept"
+      name="concept"
+      type="text"
+      required
+      maxlength={LIMITS.concept}
+      placeholder="Cena en Alfama"
+      autocomplete="off"
+      value={values.concept}
+      aria-invalid={invalid('concept')}
+      aria-describedby={described('concept')}
+    />
+    {errors.concept && <p class="field-error" id="concept-error">{errors.concept}</p>}
+  </div>
+
+  <div class="expense-form__row">
+    <div class="field">
+      <label for="amount">Importe (€)</label>
+      <input
+        id="amount"
+        name="amount"
+        type="text"
+        inputmode="decimal"
+        required
+        class="input-money"
+        placeholder="0,00"
+        autocomplete="off"
+        value={values.amount}
+        aria-invalid={invalid('amount')}
+        aria-describedby={described('amount')}
+      />
+      {errors.amount && <p class="field-error" id="amount-error">{errors.amount}</p>}
+    </div>
+    <div class="field">
+      <label for="date">Fecha</label>
+      <input
+        id="date"
+        name="date"
+        type="date"
+        required
+        class="mono"
+        value={values.date}
+        aria-invalid={invalid('date')}
+        aria-describedby={described('date')}
+      />
+      {errors.date && <p class="field-error" id="date-error">{errors.date}</p>}
+    </div>
+    <div class="field">
+      <label for="payer">Pagado por</label>
+      <select id="payer" name="payer" aria-invalid={invalid('payer')} aria-describedby={described('payer')}>
+        {
+          members.map((m) => (
+            <option value={m.id} selected={String(m.id) === values.payer}>
+              {m.name}
+            </option>
+          ))
+        }
+      </select>
+      {errors.payer && <p class="field-error" id="payer-error">{errors.payer}</p>}
+    </div>
+  </div>
+
+  <fieldset class="modes">
+    <legend class="label">Cómo se reparte</legend>
+    <div class="modes__options">
+      {
+        modes.map((mode) => (
+          <label class="modes__option">
+            <input type="radio" name="mode" value={mode.value} id={`mode-${mode.value}`} checked={values.mode === mode.value} />
+            <span>{mode.label}</span>
+          </label>
+        ))
+      }
+    </div>
+  </fieldset>
+
+  <fieldset class="split" aria-describedby={errors.split ? 'split-error split-help' : 'split-help'}>
+    <legend class="label">Entre quién</legend>
+    <p class="hint" id="split-help">
+      <span class="only-equal">Marca quién participa: el importe se divide a partes iguales.</span>
+      <span class="only-percent">Escribe el porcentaje de cada uno; tienen que sumar 100 %. Vacío es 0.</span>
+      <span class="only-exact">Escribe cuánto le toca a cada uno; tienen que sumar el importe. Vacío es 0.</span>
+    </p>
+    <ul role="list" class="split__rows">
+      {
+        members.map((m) => {
+          const row = values.rows[m.id] ?? { included: false, percent: '', amount: '' };
+          return (
+            <li class="split__row" data-member={m.id}>
+              <label class="split__check only-equal">
+                <input type="checkbox" name={`in-${m.id}`} checked={row.included} />
+                <span>{m.name}</span>
+              </label>
+              <span class="split__name not-equal" aria-hidden="true">
+                {m.name}
+              </span>
+              <label class="split__input only-percent">
+                <span class="sr-only">Porcentaje de {m.name}</span>
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  name={`pct-${m.id}`}
+                  class="input-money"
+                  value={row.percent}
+                  placeholder="0"
+                  autocomplete="off"
+                />
+                <span class="split__unit" aria-hidden="true">%</span>
+              </label>
+              <label class="split__input only-exact">
+                <span class="sr-only">Importe de {m.name}</span>
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  name={`amt-${m.id}`}
+                  class="input-money"
+                  value={row.amount}
+                  placeholder="0,00"
+                  autocomplete="off"
+                />
+                <span class="split__unit" aria-hidden="true">€</span>
+              </label>
+              <output class="split__preview money" data-preview={m.id} />
+            </li>
+          );
+        })
+      }
+    </ul>
+    <p class="split__sum money" id="split-sum" aria-live="polite"></p>
+    {errors.split && <p class="field-error" id="split-error">{errors.split}</p>}
+  </fieldset>
+
+  <div class="expense-form__actions">
+    <button class="button" type="submit">{submitLabel}</button>
+    <a class="button button--secondary" href={cancelHref}>Cancelar</a>
+  </div>
+</form>
+
+<script>
+  import { formatEuros, formatPercent, parseAmount, parseOptionalAmount, parsePercent } from '../lib/money.ts';
+  import { split, type SplitMode, type Weight } from '../lib/split.ts';
+
+  // Vista previa en vivo: lo que le toca a cada uno y si el reparto cuadra. El servidor vuelve a
+  // calcularlo todo al guardar; esto solo ayuda a no equivocarse.
+  const form = document.getElementById('expense-form') as HTMLFormElement | null;
+  const sum = document.getElementById('split-sum');
+
+  function update() {
+    if (!form || !sum) return;
+    const data = new FormData(form);
+    const mode = (data.get('mode') as SplitMode) ?? 'equal';
+    const amount = parseAmount(String(data.get('amount') ?? ''));
+    const rows = [...form.querySelectorAll<HTMLElement>('.split__row')];
+    const weights: Weight[] = [];
+    let sumValue = 0;
+    let invalid = false;
+
+    for (const row of rows) {
+      const id = Number(row.dataset.member);
+      if (mode === 'equal') {
+        if (data.get(`in-${id}`) === 'on') weights.push({ memberId: id, value: 1 });
+        continue;
+      }
+      const raw = String(data.get(mode === 'percent' ? `pct-${id}` : `amt-${id}`) ?? '');
+      const parsed = mode === 'percent' ? parsePercent(raw) : parseOptionalAmount(raw);
+      if (!parsed.ok) invalid = true;
+      else if (parsed.value > 0) {
+        weights.push({ memberId: id, value: parsed.value });
+        sumValue += parsed.value;
+      }
+    }
+
+    const result = amount.ok && !invalid ? split(mode, amount.value, weights) : null;
+    const shares = new Map(result?.ok ? result.shares.map((s) => [s.memberId, s.cents]) : []);
+    for (const row of rows) {
+      const output = row.querySelector('output');
+      const cents = shares.get(Number(row.dataset.member));
+      if (output) output.textContent = cents === undefined ? '—' : formatEuros(cents);
+    }
+
+    // Resumen: cuánto suma el reparto y si cuadra.
+    let text = '';
+    let ok = false;
+    if (invalid) text = 'Hay algún valor que no es un número válido.';
+    else if (mode === 'equal') {
+      ok = weights.length > 0;
+      text = ok ? `Entre ${weights.length} ${weights.length === 1 ? 'persona' : 'personas'}` : 'Marca al menos una persona.';
+    } else if (mode === 'percent') {
+      ok = sumValue === 10_000;
+      const diff = 10_000 - sumValue;
+      text = `Suma ${formatPercent(sumValue)}` + (ok ? ' ✓' : diff > 0 ? ` · faltan ${formatPercent(diff)}` : ` · sobran ${formatPercent(-diff)}`);
+    } else if (amount.ok) {
+      const diff = amount.value - sumValue;
+      ok = diff === 0;
+      text = `Suma ${formatEuros(sumValue)} de ${formatEuros(amount.value)}` + (ok ? ' ✓' : diff > 0 ? ` · faltan ${formatEuros(diff)}` : ` · sobran ${formatEuros(-diff)}`);
+    } else {
+      text = `Suma ${formatEuros(sumValue)}`;
+    }
+    sum.textContent = text;
+    sum.dataset.state = ok ? 'ok' : 'pending';
+  }
+
+  form?.addEventListener('input', update);
+  form?.addEventListener('change', update);
+  update();
+</script>
+
+<style>
+  .expense-form {
+    display: grid;
+    gap: var(--s5);
+  }
+
+  .expense-form__row {
+    display: grid;
+    gap: var(--s4);
+  }
+
+  @media (min-width: 640px) {
+    .expense-form__row {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
+    }
+  }
+
+  fieldset {
+    border: 0;
+    padding: 0;
+    min-width: 0;
+  }
+
+  legend {
+    padding: 0;
+    margin-bottom: var(--s2);
+  }
+
+  /* Selector de modo: tres opciones como control segmentado. */
+  .modes__options {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    border: 1px solid var(--line-strong);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+
+  .modes__option {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 2.75rem;
+    padding: var(--s2);
+    font-size: var(--text-sm);
+    font-weight: 500;
+    text-align: center;
+    line-height: 1.25;
+    cursor: pointer;
+  }
+
+  .modes__option + .modes__option {
+    border-left: 1px solid var(--line-strong);
+  }
+
+  .modes__option input {
+    position: absolute;
+    opacity: 0;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    cursor: pointer;
+  }
+
+  .modes__option:has(input:checked) {
+    background: var(--accent);
+    color: var(--accent-fg);
+    font-weight: 600;
+  }
+
+  .modes__option:has(input:focus-visible) {
+    outline: 2px solid var(--accent);
+    outline-offset: -4px;
+    box-shadow: inset 0 0 0 4px var(--bg);
+  }
+
+  /* Columnas según el modo elegido (sin JavaScript, con :has). */
+  .expense-form:has(#mode-equal:checked) :is(.only-percent, .only-exact, .not-equal),
+  .expense-form:has(#mode-percent:checked) :is(.only-equal, .only-exact),
+  .expense-form:has(#mode-exact:checked) :is(.only-equal, .only-percent) {
+    display: none;
+  }
+
+  .split__rows {
+    border-top: 1px solid var(--line);
+    margin-top: var(--s3);
+  }
+
+  .split__row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+    gap: var(--s3);
+    min-height: 3.25rem;
+    padding-block: var(--s2);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .split__check {
+    display: flex;
+    align-items: center;
+    gap: var(--s3);
+    min-height: 2.75rem;
+    cursor: pointer;
+  }
+
+  .split__check,
+  .split__name {
+    overflow-wrap: anywhere;
+  }
+
+  .split__input {
+    display: flex;
+    align-items: center;
+    gap: var(--s2);
+  }
+
+  .split__input input {
+    width: 7rem;
+  }
+
+  .split__unit {
+    width: 1ch;
+    color: var(--muted);
+    font-family: var(--font-mono);
+  }
+
+  .split__preview {
+    grid-column: -2;
+    min-width: 6.5rem;
+    color: var(--muted);
+    font-size: var(--text-sm);
+  }
+
+  .split__preview:empty {
+    display: none;
+  }
+
+  .split__sum {
+    margin-top: var(--s3);
+    font-size: var(--text-sm);
+    color: var(--muted);
+  }
+
+  .split__sum[data-state='ok'] {
+    color: var(--positive);
+  }
+
+  .split__sum:empty {
+    display: none;
+  }
+
+  @media (max-width: 420px) {
+    .split__input input {
+      width: 5.5rem;
+    }
+
+    .split__preview {
+      min-width: 5.5rem;
+    }
+  }
+
+  .expense-form__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--s3);
+  }
+</style>

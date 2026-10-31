@@ -1,0 +1,49 @@
+---
+import ExpenseForm from '../../../../components/ExpenseForm.astro';
+import Base from '../../../../layouts/Base.astro';
+import { emptyValues, readExpenseForm, validateExpense, type ExpenseErrors } from '../../../../lib/expense-form.ts';
+import { getGroup, getMembers, saveExpense, UserError } from '../../../../lib/groups.ts';
+import { isGroupId } from '../../../../lib/ids.ts';
+
+const { id } = Astro.params;
+if (!isGroupId(id)) return Astro.rewrite('/404');
+const group = await getGroup(id);
+if (!group) return Astro.rewrite('/404');
+const members = await getMembers(id);
+
+let values = emptyValues(members);
+let errors: ExpenseErrors = {};
+
+if (Astro.request.method === 'POST') {
+  values = readExpenseForm(await Astro.request.formData(), members);
+  const result = validateExpense(values, members);
+  if (result.ok) {
+    try {
+      await saveExpense(id, null, result.input);
+      return Astro.redirect(`/g/${id}?ok=gasto-nuevo`, 303);
+    } catch (e) {
+      if (!(e instanceof UserError)) throw e;
+      errors = { split: e.message };
+    }
+  } else {
+    errors = result.errors;
+  }
+  Astro.response.status = 422;
+}
+---
+
+<Base title={`Nuevo gasto · ${group.name}`} private>
+  <div class="container page narrow">
+    <div class="page-head">
+      <p class="breadcrumb"><a href={`/g/${id}`}>← {group.name}</a></p>
+      <h1>Nuevo gasto</h1>
+    </div>
+    <ExpenseForm members={members} values={values} errors={errors} submitLabel="Añadir gasto" cancelHref={`/g/${id}`} />
+  </div>
+</Base>
+
+<style>
+  .narrow {
+    max-width: calc(46rem + 2 * var(--gutter));
+  }
+</style>

@@ -1,0 +1,88 @@
+---
+import ExpenseForm from '../../../../components/ExpenseForm.astro';
+import Base from '../../../../layouts/Base.astro';
+import { readExpenseForm, validateExpense, valuesFromExpense, type ExpenseErrors } from '../../../../lib/expense-form.ts';
+import { formatDate } from '../../../../lib/format.ts';
+import { deleteExpense, getExpenses, getGroup, getMembers, saveExpense, UserError } from '../../../../lib/groups.ts';
+import { isGroupId } from '../../../../lib/ids.ts';
+import { formatEuros } from '../../../../lib/money.ts';
+import { field, parseId } from '../../../../lib/validate.ts';
+
+const { id, expense: expenseParam } = Astro.params;
+const expenseId = parseId(expenseParam ?? '');
+if (!isGroupId(id) || expenseId === null) return Astro.rewrite('/404');
+const group = await getGroup(id);
+if (!group) return Astro.rewrite('/404');
+const [members, expenses] = await Promise.all([getMembers(id), getExpenses(id)]);
+const expense = expenses.find((e) => e.id === expenseId);
+if (!expense) return Astro.rewrite('/404');
+
+let values = valuesFromExpense(expense, members);
+let errors: ExpenseErrors = {};
+
+if (Astro.request.method === 'POST') {
+  const form = await Astro.request.formData();
+  if (field(form, 'action') === 'delete') {
+    await deleteExpense(id, expenseId);
+    return Astro.redirect(`/g/${id}?ok=gasto-borrado`, 303);
+  }
+  values = readExpenseForm(form, members);
+  const result = validateExpense(values, members);
+  if (result.ok) {
+    try {
+      await saveExpense(id, expenseId, result.input);
+      return Astro.redirect(`/g/${id}?ok=gasto-editado`, 303);
+    } catch (e) {
+      if (!(e instanceof UserError)) throw e;
+      errors = { split: e.message };
+    }
+  } else {
+    errors = result.errors;
+  }
+  Astro.response.status = 422;
+}
+---
+
+<Base title={`${expense.concept} · ${group.name}`} private>
+  <div class="container page narrow">
+    <div class="page-head">
+      <p class="breadcrumb"><a href={`/g/${id}`}>← {group.name}</a></p>
+      <h1>Editar gasto</h1>
+      <p class="muted">
+        {expense.concept} · <span class="mono">{formatEuros(expense.amountCents)}</span> ·
+        <span class="mono">{formatDate(expense.date)}</span>
+      </p>
+    </div>
+    <ExpenseForm members={members} values={values} errors={errors} submitLabel="Guardar cambios" cancelHref={`/g/${id}`} />
+
+    <form method="post" class="danger-zone" id="delete-form">
+      <input type="hidden" name="action" value="delete" />
+      <p class="hint">Borrar el gasto lo quita de los saldos de todo el grupo.</p>
+      <button class="button button--danger" type="submit">Borrar gasto</button>
+    </form>
+  </div>
+</Base>
+
+<script>
+  // Con JavaScript se pide confirmación antes de borrar; sin él, el botón borra directamente.
+  document.getElementById('delete-form')?.addEventListener('submit', (event) => {
+    if (!window.confirm('¿Borrar este gasto? No se puede deshacer.')) event.preventDefault();
+  });
+</script>
+
+<style>
+  .narrow {
+    max-width: calc(46rem + 2 * var(--gutter));
+  }
+
+  .danger-zone {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s3);
+    margin-top: var(--s5);
+    padding-top: var(--s5);
+    border-top: 1px solid var(--line);
+  }
+</style>

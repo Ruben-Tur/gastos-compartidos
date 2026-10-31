@@ -1,0 +1,25 @@
+---
+// Página de error genérica: nunca muestra el error ni la traza (eso solo va al registro del servidor).
+import Base from '../layouts/Base.astro';
+---
+
+<Base title="Algo ha fallado" private>
+  <div class="container page oops">
+    <p class="mono muted">500</p>
+    <h1>Algo ha fallado</h1>
+    <p>No se ha podido completar la petición. Vuelve atrás e inténtalo de nuevo dentro de un momento.</p>
+    <p><a class="button" href="/">Ir al inicio</a></p>
+  </div>
+</Base>
+
+<style>
+  .oops {
+    display: grid;
+    gap: var(--s4);
+    max-width: calc(36rem + 2 * var(--gutter));
+  }
+
+  .oops h1 {
+    font-size: var(--text-xl);
+  }
+</style>

@@ -1,0 +1,119 @@
+---
+/**
+ * Portada de la demo: crear un grupo y «Tus grupos en este navegador». En la primera visita se carga
+ * el ejemplo «Viaje a Lisboa» y se abre directamente.
+ */
+import '../../src/styles/landing.css';
+import { LIMITS } from '../../src/lib/validate.ts';
+import Demo from '../layouts/Demo.astro';
+---
+
+<Demo title="Demo · Reparte gastos compartidos sin líos">
+  <div id="app" hidden>
+    <div class="container page landing">
+      <section class="hero" aria-labelledby="titulo">
+        <h1 id="titulo">Reparte los gastos del grupo y salda las cuentas con el mínimo de pagos</h1>
+        <p class="hero__lead">
+          <strong>Cuentas claras</strong> sirve para apuntar quién ha pagado qué en un viaje, una cena o un piso
+          compartido. Reparte cada gasto a partes iguales, por porcentajes o por importes, te dice al momento cuánto debe
+          o le deben a cada persona y calcula el menor número de transferencias para dejarlo todo a cero.
+        </p>
+        <p class="hero__note">Esta demo funciona igual que la web, pero sin servidor: todo se queda en tu navegador.</p>
+      </section>
+
+      <section class="card create" aria-labelledby="crear">
+        <h2 id="crear" class="card__title">Crea un grupo</h2>
+        <div id="create-errors"></div>
+        <form method="post" class="create__form" id="create-form" novalidate>
+          <div class="field">
+            <label for="name">Nombre del grupo</label>
+            <input
+              id="name"
+              name="name"
+              type="text"
+              required
+              maxlength={LIMITS.groupName}
+              placeholder="Viaje a Lisboa"
+              autocomplete="off"
+            />
+          </div>
+          <div class="field">
+            <label for="members">Personas</label>
+            <textarea
+              id="members"
+              name="members"
+              rows="5"
+              required
+              placeholder={'Ana\nLuis\nMarta\nPablo'}
+              aria-describedby="members-hint"></textarea>
+            <p class="hint" id="members-hint">
+              Una por línea, entre 2 y {LIMITS.membersPerGroup}. Podrás añadir más después.
+            </p>
+          </div>
+          <button class="button button--block" type="submit">Crear grupo</button>
+        </form>
+      </section>
+
+      <section class="recent card card--soft" id="recientes" aria-labelledby="recientes-titulo" hidden>
+        <h2 id="recientes-titulo" class="card__title">Tus grupos en este navegador</h2>
+        <ul role="list" class="recent__list"></ul>
+        <p class="hint">En la demo, los grupos solo existen en este navegador.</p>
+      </section>
+    </div>
+  </div>
+</Demo>
+
+<script>
+  import { LIMITS, parseMemberNames, requiredText } from '../../src/lib/validate.ts';
+  import { boot, commit, errorNotice, go, h, routes, setFieldError, userMessage } from '../lib/app.ts';
+  import { createGroup, SEED_GROUP_ID } from '../lib/store.ts';
+
+  const loaded = boot();
+  const app = document.getElementById('app');
+  const form = document.getElementById('create-form') as HTMLFormElement | null;
+  const errorsBox = document.getElementById('create-errors');
+
+  if (loaded?.firstVisit) {
+    // Primera visita: directamente al ejemplo.
+    location.replace(routes.group(SEED_GROUP_ID));
+  } else if (loaded && app && form && errorsBox) {
+    const section = document.getElementById('recientes');
+    const list = section?.querySelector('ul');
+    if (section && list && loaded.state.groups.length > 0) {
+      list.replaceChildren(
+        ...loaded.state.groups.map((g) => h('li', {}, h('a', { href: routes.group(g.id) }, g.name))),
+      );
+      section.hidden = false;
+    }
+    app.hidden = false;
+
+    const name = form.elements.namedItem('name') as HTMLInputElement;
+    const members = form.elements.namedItem('members') as HTMLTextAreaElement;
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      // Mismas comprobaciones que la portada de la web (src/pages/index.astro).
+      const checkedName = requiredText(name.value.slice(0, 500), LIMITS.groupName, 'un nombre para el grupo');
+      const checkedMembers = parseMemberNames(members.value.slice(0, 5000));
+      let error = '';
+      if (checkedName.ok && checkedMembers.ok) {
+        try {
+          const id = commit((state) => createGroup(state, checkedName.value, checkedMembers.value));
+          go(routes.group(id, 'creado'));
+          return;
+        } catch (e) {
+          error = userMessage(e);
+        }
+      }
+      const nameError = checkedName.ok ? undefined : checkedName.error;
+      const membersError = checkedMembers.ok ? undefined : checkedMembers.error;
+      setFieldError(name, 'name-error', nameError);
+      setFieldError(members, 'members-error', membersError, document.getElementById('members-hint') ?? members);
+      const messages = [nameError, membersError, error].filter((m): m is string => Boolean(m));
+      errorsBox.replaceChildren(errorNotice('Revisa el formulario:', messages));
+      if (nameError) name.focus();
+      else if (membersError) members.focus();
+      else errorsBox.scrollIntoView({ block: 'nearest' });
+    });
+  }
+</script>

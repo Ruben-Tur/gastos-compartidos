@@ -1,0 +1,27 @@
+---
+/**
+ * Plantilla de la demo: la misma Base que la web, sin indexar (la página que se indexa es la del
+ * proyecto en el portfolio), sin canónico ni Open Graph y con el aviso de demo bajo la cabecera.
+ * La Content-Security-Policy la añade Astro como <meta> con los hashes de cada script y estilo
+ * (ver astro.config.demo.mjs).
+ */
+import Base from '../../src/layouts/Base.astro';
+import DemoNotice from '../components/DemoNotice.astro';
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const DESCRIPTION =
+  'Demo de Cuentas claras: reparte los gastos de un grupo a partes iguales, por porcentajes o por importes y calcula el mínimo de pagos para quedar en paz. Sin servidor: los datos se guardan solo en tu navegador.';
+
+const { title, description = DESCRIPTION } = Astro.props;
+---
+
+<Base title={title} description={description} robots="noindex, follow">
+  <meta slot="head" name="referrer" content="strict-origin-when-cross-origin" />
+  <slot name="header-end" slot="header-end" />
+  <DemoNotice slot="banner" />
+  <slot />
+</Base>

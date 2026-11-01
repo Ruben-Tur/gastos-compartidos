@@ -1,5 +1,6 @@
 ---
 import Base from '../../../layouts/Base.astro';
+import '../../../styles/people.css';
 import { FLASH } from '../../../lib/format.ts';
 import { addMember, deleteMember, getGroup, getMembers, renameGroup, renameMember, UserError } from '../../../lib/groups.ts';
 import { isGroupId } from '../../../lib/ids.ts';
@@ -141,55 +142,3 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? ''];
     </section>
   </div>
 </Base>
-
-<style>
-  .narrow {
-    max-width: calc(40rem + 2 * var(--gutter));
-  }
-
-  .flash {
-    margin-bottom: var(--s5);
-  }
-
-  .block + .block {
-    margin-top: var(--s5);
-  }
-
-  .people {
-    display: grid;
-    gap: var(--s3);
-    margin-bottom: var(--s3);
-  }
-
-  .person {
-    display: flex;
-    align-items: center;
-    gap: var(--s3);
-  }
-
-  .person__rename {
-    flex: 1;
-    display: flex;
-    gap: var(--s2);
-    min-width: 0;
-  }
-
-  .person__rename input {
-    min-width: 0;
-  }
-
-  .add {
-    margin-top: var(--s5);
-    padding-top: var(--s5);
-    border-top: 1px solid var(--line);
-  }
-
-  .inline {
-    display: flex;
-    gap: var(--s2);
-  }
-
-  .inline input {
-    min-width: 0;
-  }
-</style>

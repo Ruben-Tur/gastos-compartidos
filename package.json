@@ -11,6 +11,8 @@
     "dev": "astro dev --port 4322",
     "build": "astro build",
     "preview": "astro preview --port 4322",
+    "dev:demo": "astro dev --config astro.config.demo.mjs",
+    "build:demo": "astro build --config astro.config.demo.mjs",
     "start": "node ./dist/server/entry.mjs",
     "check": "astro check",
     "test": "node --test \"tests/*.test.ts\"",

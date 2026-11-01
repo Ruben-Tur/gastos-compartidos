@@ -3,6 +3,8 @@
  * Formulario de gasto (nuevo y edición). Funciona sin JavaScript: el cambio de columnas según el modo
  * de reparto es CSS (:has) y la validación la hace el servidor. El script solo añade la vista previa
  * del reparto y la suma en vivo, con las mismas funciones que usa el servidor.
+ * La demo sin servidor (demo/) reutiliza este mismo formulario: clona la primera fila del reparto para
+ * cada persona y cambia los nombres de los campos y los textos marcados con data-member-name.
  */
 import type { ExpenseErrors, ExpenseFormValues } from '../lib/expense-form.ts';
 import type { Member } from '../lib/groups.ts';
@@ -135,13 +137,13 @@ const described = (key: keyof ExpenseErrors) => (errors[key] ? `${key}-error` : 
             <li class="split__row" data-member={m.id}>
               <label class="split__check only-equal">
                 <input type="checkbox" name={`in-${m.id}`} checked={row.included} />
-                <span>{m.name}</span>
+                <span data-member-name>{m.name}</span>
               </label>
-              <span class="split__name not-equal" aria-hidden="true">
+              <span class="split__name not-equal" aria-hidden="true" data-member-name>
                 {m.name}
               </span>
               <label class="split__input only-percent">
-                <span class="sr-only">Porcentaje de {m.name}</span>
+                <span class="sr-only">Porcentaje de <span data-member-name>{m.name}</span></span>
                 <input
                   type="text"
                   inputmode="decimal"
@@ -154,7 +156,7 @@ const described = (key: keyof ExpenseErrors) => (errors[key] ? `${key}-error` : 
                 <span class="split__unit" aria-hidden="true">%</span>
               </label>
               <label class="split__input only-exact">
-                <span class="sr-only">Importe de {m.name}</span>
+                <span class="sr-only">Importe de <span data-member-name>{m.name}</span></span>
                 <input
                   type="text"
                   inputmode="decimal"

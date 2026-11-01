@@ -1,0 +1,188 @@
+---
+/**
+ * Nuevo gasto (?g=<id>) o edición (?g=<id>&e=<gasto>) en la demo. Usa el mismo ExpenseForm que la
+ * web, compilado con una persona de muestra: el script clona esa fila para cada persona del grupo,
+ * rellena los valores y, al guardar, valida con las mismas funciones que el servidor (expense-form.ts).
+ */
+import '../../../src/styles/expense-page.css';
+import ExpenseForm from '../../../src/components/ExpenseForm.astro';
+import { emptyValues } from '../../../src/lib/expense-form.ts';
+import NotFound from '../../components/NotFound.astro';
+import Demo from '../../layouts/Demo.astro';
+
+const template = [{ id: 0, name: '' }];
+---
+
+<Demo title="Gasto">
+  <NotFound />
+  <div id="app" hidden>
+    <div class="container page narrow">
+      <div class="page-head">
+        <p class="breadcrumb"><a id="back" href="#">← <span id="back-name"></span></a></p>
+        <h1 id="title">Nuevo gasto</h1>
+        <p class="muted" id="subtitle" hidden></p>
+      </div>
+      <ExpenseForm members={template} values={emptyValues(template)} errors={{}} submitLabel="Añadir gasto" cancelHref="#" />
+
+      <div id="delete-zone" hidden>
+        <form method="post" class="danger-zone" id="delete-form">
+          <p class="hint">Borrar el gasto lo quita de los saldos de todo el grupo.</p>
+          <button class="button button--danger" type="submit">Borrar gasto</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</Demo>
+
+<script>
+  import {
+    readExpenseForm,
+    validateExpense,
+    valuesFromExpense,
+    emptyValues,
+    type ExpenseErrors,
+    type ExpenseFormValues,
+  } from '../../../src/lib/expense-form.ts';
+  import { formatDate } from '../../../src/lib/format.ts';
+  import { formatEuros } from '../../../src/lib/money.ts';
+  import { parseId } from '../../../src/lib/validate.ts';
+  import {
+    boot,
+    commit,
+    currentGroup,
+    errorNotice,
+    go,
+    h,
+    param,
+    routes,
+    setFieldError,
+    setTitle,
+    showNotFound,
+    userMessage,
+  } from '../../lib/app.ts';
+  import { deleteExpense, saveExpense } from '../../lib/store.ts';
+
+  const loaded = boot();
+  const group = loaded && currentGroup(loaded.state);
+  const expenseParam = param('e');
+  const expenseId = expenseParam === null ? null : parseId(expenseParam);
+  const expense = group && expenseId !== null ? group.expenses.find((e) => e.id === expenseId) : undefined;
+  const app = document.getElementById('app');
+  const form = document.getElementById('expense-form') as HTMLFormElement | null;
+
+  if (loaded && (!group || (expenseParam !== null && !expense))) showNotFound();
+  else if (group && app && form) {
+    const id = group.id;
+    const { members } = group;
+    const values: ExpenseFormValues = expense ? valuesFromExpense(expense, members) : emptyValues(members);
+
+    // Cabecera
+    setTitle(expense ? `${expense.concept} · ${group.name}` : `Nuevo gasto · ${group.name}`);
+    (document.getElementById('back') as HTMLAnchorElement).href = routes.group(id);
+    document.getElementById('back-name')!.textContent = group.name;
+    if (expense) {
+      document.getElementById('title')!.textContent = 'Editar gasto';
+      const subtitle = document.getElementById('subtitle')!;
+      subtitle.replaceChildren(
+        `${expense.concept} · `,
+        h('span', { class: 'mono' }, formatEuros(expense.amountCents)),
+        ' · ',
+        h('span', { class: 'mono' }, formatDate(expense.date)),
+      );
+      subtitle.hidden = false;
+    }
+    form.querySelector<HTMLButtonElement>('button[type="submit"]')!.textContent = expense ? 'Guardar cambios' : 'Añadir gasto';
+    form.querySelector<HTMLAnchorElement>('.expense-form__actions a')!.href = routes.group(id);
+
+    // Quién pagó
+    const payer = form.elements.namedItem('payer') as HTMLSelectElement;
+    payer.replaceChildren(...members.map((m) => h('option', { value: m.id }, m.name)));
+
+    // Filas del reparto: una copia de la fila de muestra por persona (conserva los estilos del componente).
+    const sample = form.querySelector<HTMLLIElement>('.split__row')!;
+    const rows = members.map((m) => {
+      const row = sample.cloneNode(true) as HTMLLIElement;
+      row.dataset.member = String(m.id);
+      row.querySelector('output')?.setAttribute('data-preview', String(m.id));
+      for (const input of row.querySelectorAll<HTMLInputElement>('input[name]')) {
+        input.name = input.name.replace(/-0$/, `-${m.id}`);
+      }
+      for (const el of row.querySelectorAll('[data-member-name]')) el.textContent = m.name;
+      return row;
+    });
+    sample.replaceWith(...rows);
+
+    // Valores iniciales (los del gasto al editar).
+    const fill = (v: ExpenseFormValues) => {
+      (form.elements.namedItem('concept') as HTMLInputElement).value = v.concept;
+      (form.elements.namedItem('amount') as HTMLInputElement).value = v.amount;
+      (form.elements.namedItem('date') as HTMLInputElement).value = v.date;
+      payer.value = v.payer;
+      (document.getElementById(`mode-${v.mode}`) as HTMLInputElement).checked = true;
+      for (const m of members) {
+        const row = v.rows[m.id];
+        (form.elements.namedItem(`in-${m.id}`) as HTMLInputElement).checked = row?.included ?? false;
+        (form.elements.namedItem(`pct-${m.id}`) as HTMLInputElement).value = row?.percent ?? '';
+        (form.elements.namedItem(`amt-${m.id}`) as HTMLInputElement).value = row?.amount ?? '';
+      }
+      // La vista previa del reparto (script de ExpenseForm) escucha este evento.
+      form.dispatchEvent(new Event('change'));
+    };
+    fill(values);
+
+    // Errores como los pinta la web: resumen arriba, mensaje bajo cada campo y aria-invalid.
+    const fields: Record<keyof ExpenseErrors, [HTMLElement, Element?]> = {
+      concept: [form.elements.namedItem('concept') as HTMLElement],
+      amount: [form.elements.namedItem('amount') as HTMLElement],
+      date: [form.elements.namedItem('date') as HTMLElement],
+      payer: [payer],
+      split: [form.querySelector<HTMLElement>('fieldset.split')!, document.getElementById('split-sum')!],
+    };
+    const showErrors = (errors: ExpenseErrors) => {
+      form.querySelector(':scope > .notice--error')?.remove();
+      for (const [key, [field, anchor]] of Object.entries(fields) as [keyof ExpenseErrors, [HTMLElement, Element?]][]) {
+        setFieldError(field, `${key}-error`, errors[key], anchor);
+      }
+      const list = Object.values(errors);
+      if (list.length > 0) {
+        form.querySelector('input[name="action"]')!.after(errorNotice('Revisa el gasto:', list));
+        const first = (Object.keys(fields) as (keyof ExpenseErrors)[]).find((key) => errors[key]);
+        const target = first === 'split' ? form.querySelector<HTMLInputElement>('fieldset.split input') : first && fields[first][0];
+        target?.focus();
+      }
+    };
+
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      const result = validateExpense(readExpenseForm(new FormData(form), members), members);
+      if (!result.ok) {
+        showErrors(result.errors);
+        return;
+      }
+      try {
+        commit((state) => saveExpense(state, id, expense?.id ?? null, result.input));
+        go(routes.group(id, expense ? 'gasto-editado' : 'gasto-nuevo'));
+      } catch (e) {
+        showErrors({ split: userMessage(e) });
+      }
+    });
+
+    // Borrar (solo al editar), con confirmación como en la web.
+    const deleteForm = document.getElementById('delete-form') as HTMLFormElement;
+    if (expense) {
+      document.getElementById('delete-zone')!.hidden = false;
+      deleteForm.addEventListener('submit', (event) => {
+        event.preventDefault();
+        if (!window.confirm('¿Borrar este gasto? No se puede deshacer.')) return;
+        try {
+          commit((state) => deleteExpense(state, id, expense.id));
+          go(routes.group(id, 'gasto-borrado'));
+        } catch (e) {
+          showErrors({ split: userMessage(e) });
+        }
+      });
+    }
+
+    app.hidden = false;
+  }
+</script>

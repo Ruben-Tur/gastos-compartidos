@@ -1,6 +1,7 @@
 ---
 import ExpenseForm from '../../../../components/ExpenseForm.astro';
 import Base from '../../../../layouts/Base.astro';
+import '../../../../styles/expense-page.css';
 import { readExpenseForm, validateExpense, valuesFromExpense, type ExpenseErrors } from '../../../../lib/expense-form.ts';
 import { formatDate } from '../../../../lib/format.ts';
 import { deleteExpense, getExpenses, getGroup, getMembers, saveExpense, UserError } from '../../../../lib/groups.ts';
@@ -69,20 +70,3 @@ if (Astro.request.method === 'POST') {
     if (!window.confirm('¿Borrar este gasto? No se puede deshacer.')) event.preventDefault();
   });
 </script>
-
-<style>
-  .narrow {
-    max-width: calc(46rem + 2 * var(--gutter));
-  }
-
-  .danger-zone {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--s3);
-    margin-top: var(--s5);
-    padding-top: var(--s5);
-    border-top: 1px solid var(--line);
-  }
-</style>

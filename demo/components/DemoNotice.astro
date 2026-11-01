@@ -1,0 +1,73 @@
+---
+/** Aviso fijo de la demo bajo la cabecera, con la acción «Restablecer demo», y mensaje sin JavaScript. */
+---
+
+<aside class="demo-notice" aria-label="Aviso de la demo">
+  <div class="container demo-notice__inner">
+    <p><strong>Demo:</strong> los datos se guardan solo en este navegador.</p>
+    <button class="link-button demo-notice__reset" type="button" id="demo-reset" hidden>Restablecer demo</button>
+  </div>
+</aside>
+<noscript>
+  <div class="container">
+    <p class="notice notice--error demo-notice__noscript">
+      <strong>Esta demo necesita JavaScript.</strong> Funciona entera en tu navegador, sin servidor: actívalo para probarla.
+    </p>
+  </div>
+</noscript>
+
+<script>
+  import { routes } from '../lib/app.ts';
+  import { resetState, SEED_GROUP_ID } from '../lib/store.ts';
+
+  const button = document.getElementById('demo-reset');
+  if (button) {
+    button.hidden = false;
+    button.addEventListener('click', () => {
+      if (!window.confirm('¿Restablecer la demo? Se borran los grupos de este navegador y vuelve el ejemplo «Viaje a Lisboa».')) return;
+      try {
+        resetState(window.localStorage);
+        location.assign(routes.group(SEED_GROUP_ID, 'demo-restablecida'));
+      } catch {
+        window.alert('No se ha podido restablecer: este navegador no deja guardar datos.');
+      }
+    });
+  }
+</script>
+
+<style>
+  .demo-notice {
+    background: var(--accent-soft);
+    border-bottom: 1px solid var(--accent-line);
+    font-size: var(--text-sm);
+  }
+
+  .demo-notice__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--s1) var(--s4);
+    min-height: 2.75rem;
+    padding-block: var(--s2);
+  }
+
+  .demo-notice strong {
+    color: var(--accent);
+  }
+
+  .demo-notice__reset {
+    min-height: 2.75rem;
+    color: var(--accent);
+    font-weight: 600;
+    text-decoration-color: var(--accent-line);
+  }
+
+  .demo-notice__reset:hover {
+    color: var(--accent-hover);
+  }
+
+  .demo-notice__noscript {
+    margin-top: var(--s5);
+  }
+</style>

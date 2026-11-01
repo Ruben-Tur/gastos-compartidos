@@ -1,0 +1,288 @@
+---
+/**
+ * Página del grupo en la demo (?g=<id>): la misma estructura y estilos que src/pages/g/[id]/index.astro,
+ * pintada en el navegador con los datos de localStorage. Sin la tarjeta «Compartir»: en la demo no
+ * hay enlace que compartir.
+ */
+import '../../../src/styles/group.css';
+import NotFound from '../../components/NotFound.astro';
+import Demo from '../../layouts/Demo.astro';
+---
+
+<Demo title="Grupo">
+  <a slot="header-end" class="site-header__link" href={import.meta.env.BASE_URL}>Nuevo grupo</a>
+
+  <NotFound />
+  <div id="app" hidden>
+    <div class="container page">
+      <div id="messages"></div>
+
+      <div class="group">
+        <header class="group__head">
+          <h1 id="group-name"></h1>
+          <p class="group__meta" id="group-meta"></p>
+          <div class="group__actions">
+            <a class="button" id="add-expense" href="#">Añadir gasto</a>
+            <a class="button button--secondary" id="people-link" href="#">Personas y grupo</a>
+          </div>
+        </header>
+
+        <section class="group__expenses" id="expenses" aria-labelledby="gastos">
+          <h2 id="gastos" class="section-title">Gastos</h2>
+        </section>
+
+        <aside class="group__side">
+          <section class="card card--accent plan" id="plan" aria-labelledby="plan-titulo">
+            <h2 id="plan-titulo" class="card__title">Para quedar en paz</h2>
+          </section>
+
+          <section class="card balances" id="balances" aria-labelledby="saldos">
+            <h2 id="saldos" class="card__title">Saldos</h2>
+          </section>
+
+          <section class="card card--soft" id="pagos" aria-labelledby="pagos-titulo" hidden>
+            <h2 id="pagos-titulo" class="card__title">Pagos registrados</h2>
+          </section>
+        </aside>
+      </div>
+    </div>
+  </div>
+</Demo>
+
+<script>
+  import { formatDate, MODE_LABELS, moneyClass, plural } from '../../../src/lib/format.ts';
+  import { formatEuros } from '../../../src/lib/money.ts';
+  import {
+    boot,
+    commit,
+    currentGroup,
+    go,
+    h,
+    routes,
+    setTitle,
+    showMessages,
+    showNotFound,
+    srOnly,
+    svg,
+    userMessage,
+  } from '../../lib/app.ts';
+  import { groupData, settle, undoSettlement } from '../../lib/store.ts';
+
+  const loaded = boot();
+  const group = loaded && currentGroup(loaded.state);
+  const app = document.getElementById('app');
+  const messages = document.getElementById('messages');
+
+  if (loaded && !group) showNotFound();
+  if (group && app && messages) {
+    const { members, expenses, settlements, balances, plan, totalCents } = groupData(group);
+    const id = group.id;
+    const nameOf = new Map(members.map((m) => [m.id, m.name]));
+    const byId = <T extends HTMLElement>(elementId: string) => document.getElementById(elementId) as T;
+
+    /** Ejecuta un cambio y vuelve a la página del grupo; si falla, muestra el error como la web. */
+    const act = (change: Parameters<typeof commit>[0], ok: string, hash?: string) => {
+      try {
+        commit(change);
+        go(routes.group(id, ok, hash));
+      } catch (e) {
+        showMessages(messages, userMessage(e));
+        messages.scrollIntoView({ block: 'nearest' });
+      }
+    };
+
+    setTitle(group.name);
+    showMessages(messages);
+
+    // Cabecera
+    byId('group-name').textContent = group.name;
+    byId('group-meta').replaceChildren(
+      `${plural(members.length, 'persona', 'personas')} · ${plural(expenses.length, 'gasto', 'gastos')} · `,
+      h('span', { class: 'mono' }, formatEuros(totalCents)),
+    );
+    byId<HTMLAnchorElement>('add-expense').href = routes.newExpense(id);
+    byId<HTMLAnchorElement>('people-link').href = routes.people(id);
+
+    // Gastos
+    byId('expenses').append(
+      expenses.length === 0
+        ? h(
+            'p',
+            { class: 'empty' },
+            'Todavía no hay gastos. ',
+            h('a', { href: routes.newExpense(id) }, 'Añade el primero'),
+            ': quién pagó, cuánto y entre quién se reparte.',
+          )
+        : h(
+            'ul',
+            { role: 'list', class: 'expenses' },
+            ...expenses.map((e) =>
+              h(
+                'li',
+                {},
+                h(
+                  'a',
+                  { class: 'expense', href: routes.expense(id, e.id) },
+                  h(
+                    'span',
+                    { class: 'expense__main' },
+                    h('span', { class: 'expense__concept' }, e.concept),
+                    h('span', { class: 'muted' }, ` · ${nameOf.get(e.payerId)}`),
+                  ),
+                  h(
+                    'span',
+                    { class: 'expense__meta' },
+                    h('span', { class: 'mono' }, formatDate(e.date)),
+                    ` · ${MODE_LABELS[e.splitMode]}`,
+                    e.splitMode === 'equal' && e.shares.length !== members.length && ` entre ${e.shares.length}`,
+                  ),
+                  h('span', { class: 'expense__amount money' }, formatEuros(e.amountCents)),
+                ),
+              ),
+            ),
+          ),
+    );
+
+    // Para quedar en paz: ordenado por quien paga y luego quien cobra, en el orden del grupo.
+    const order = new Map(members.map((m, i) => [m.id, i]));
+    const transfers = [...plan.transfers].sort(
+      (a, b) => order.get(a.fromId)! - order.get(b.fromId)! || order.get(a.toId)! - order.get(b.toId)!,
+    );
+    if (transfers.length > 0) byId('plan-titulo').append(` · ${plural(transfers.length, 'pago', 'pagos')}`);
+    byId('plan').append(
+      transfers.length === 0
+        ? h(
+            'p',
+            { class: 'plan__done' },
+            expenses.length === 0
+              ? 'Cuando haya gastos, aquí verás quién paga a quién.'
+              : 'Todo el mundo está en paz. No hace falta ningún pago.',
+          )
+        : h(
+            'ul',
+            { role: 'list', class: 'plan__list' },
+            ...transfers.map((t) => {
+              const from = nameOf.get(t.fromId) ?? '';
+              const to = nameOf.get(t.toId) ?? '';
+              const form = h(
+                'form',
+                { method: 'post', class: 'plan__form' },
+                h(
+                  'button',
+                  { class: 'button button--small button--secondary', type: 'submit' },
+                  'Marcar como pagado',
+                  srOnly(`: ${from} a ${to}, ${formatEuros(t.amountCents)}`),
+                ),
+              );
+              form.addEventListener('submit', (event) => {
+                event.preventDefault();
+                act((state) => settle(state, id, t.fromId, t.toId, t.amountCents), 'pago', 'plan');
+              });
+              return h(
+                'li',
+                { class: 'plan__row' },
+                h(
+                  'span',
+                  { class: 'plan__who' },
+                  `${from} `,
+                  h('span', { class: 'plan__arrow', 'aria-hidden': 'true' }, '→'),
+                  srOnly('paga a'),
+                  ` ${to}`,
+                ),
+                h('span', { class: 'plan__amount money' }, formatEuros(t.amountCents)),
+                form,
+              );
+            }),
+          ),
+    );
+    if (transfers.length > 0) {
+      byId('plan').append(
+        h(
+          'p',
+          { class: 'plan__note' },
+          plan.exact
+            ? 'Es el mínimo número de transferencias posible.'
+            : 'Con tantas personas se usa un cálculo aproximado: puede que exista un plan con algún pago menos.',
+        ),
+      );
+    }
+
+    // Saldos, con una barra centrada en cero.
+    const maxAbs = Math.max(1, ...balances.map((b) => Math.abs(b.cents)));
+    byId('balances').append(
+      h(
+        'ul',
+        { role: 'list', class: 'balances__list' },
+        ...balances.map((b) => {
+          const width = (Math.abs(b.cents) / maxAbs) * 50;
+          const bar = svg(
+            'svg',
+            { class: 'balance__bar', viewBox: '0 0 100 8', preserveAspectRatio: 'none', 'aria-hidden': 'true' },
+            svg('line', { x1: 50, y1: 0, x2: 50, y2: 8, class: 'balance__axis' }),
+          );
+          if (b.cents !== 0) {
+            bar.append(
+              svg('rect', {
+                class: b.cents > 0 ? 'balance__pos' : 'balance__neg',
+                x: b.cents > 0 ? 50 : 50 - width,
+                y: 1,
+                width,
+                height: 6,
+                rx: 1,
+              }),
+            );
+          }
+          return h(
+            'li',
+            { class: 'balance' },
+            h('span', { class: 'balance__name' }, nameOf.get(b.memberId) ?? ''),
+            bar,
+            h(
+              'span',
+              { class: `balance__amount ${moneyClass(b.cents)}` },
+              srOnly(b.cents > 0 ? 'le deben' : b.cents < 0 ? 'debe' : 'en paz'),
+              formatEuros(b.cents, { sign: true }),
+            ),
+          );
+        }),
+      ),
+      h('p', { class: 'hint' }, 'En verde, lo que le deben; en negativo, lo que debe.'),
+    );
+
+    // Pagos registrados
+    if (settlements.length > 0) {
+      const section = byId('pagos');
+      section.append(
+        h(
+          'ul',
+          { role: 'list', class: 'settlements' },
+          ...settlements.map((s) => {
+            const from = nameOf.get(s.fromId) ?? '';
+            const to = nameOf.get(s.toId) ?? '';
+            const form = h(
+              'form',
+              { method: 'post' },
+              h('button', { class: 'link-button', type: 'submit' }, 'Deshacer', srOnly(` el pago de ${from} a ${to}`)),
+            );
+            form.addEventListener('submit', (event) => {
+              event.preventDefault();
+              act((state) => undoSettlement(state, id, s.id), 'pago-deshecho', 'pagos');
+            });
+            return h(
+              'li',
+              { class: 'settlement' },
+              h('span', {}, `${from} pagó `, h('span', { class: 'money' }, formatEuros(s.amountCents)), ` a ${to}`),
+              form,
+            );
+          }),
+        ),
+      );
+      section.hidden = false;
+    }
+
+    app.hidden = false;
+    // Tras «Marcar como pagado» o «Deshacer», la web vuelve a #plan o #pagos: aquí el contenido se
+    // pinta después de cargar, así que el salto se hace a mano.
+    if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+  }
+</script>

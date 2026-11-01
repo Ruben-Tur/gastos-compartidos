@@ -100,9 +100,25 @@ Instala la versión WebAssembly del compilador en `node_modules` sin modificar `
 | `npm run build` | Compilación para producción |
 | `npm start` | Arranca la versión compilada (`PORT` y `HOST` eligen puerto e interfaz) |
 | `npm run check` | Comprobación de tipos |
-| `npm test` | Pruebas de la lógica de dinero |
+| `npm test` | Pruebas de la lógica de dinero y del almacén de la demo |
+| `npm run build:demo` | Demo estática sin servidor en `demo-dist/` (ver «Demo sin servidor») |
+| `npm run dev:demo` | La demo en modo desarrollo (puerto 4324, en `/demos/gastos-compartidos/`) |
 | `npm run db:seed` | Crea el grupo de ejemplo «Viaje a Lisboa» (si ya existe, solo muestra su enlace) |
 | `npm run fix:compiler` | Solo Windows: compilador de Astro en WebAssembly (ver arriba) |
+
+## Demo sin servidor
+
+Versión estática de la misma aplicación para enseñarla dentro del portfolio en `/demos/gastos-compartidos/`, sin servidor ni base de datos. Tiene la misma interfaz y los mismos flujos (crear grupo, personas, gastos con los tres repartos, saldos, «Marcar como pagado» y deshacer) y reutiliza los componentes, los estilos y la lógica de `src/`; solo cambia dónde se guardan los datos.
+
+```bash
+npm run build:demo
+```
+
+- **Salida:** `demo-dist/` (fuera de git). Se copia tal cual a `<portfolio>/public/demos/gastos-compartidos/` y la sirve cualquier hosting estático: cada página es un `index.html` en su carpeta y el grupo va en la consulta (`grupo/?g=<id>`, `grupo/gasto/?g=<id>&e=<gasto>`), sin reescrituras. La ruta base se cambia en `astro.config.demo.mjs`.
+- **Datos:** solo en el `localStorage` del visitante (clave versionada `cuentas-claras:demo:v1`). En la primera visita se carga y se abre el ejemplo «Viaje a Lisboa» (el mismo que `npm run db:seed`, en `src/lib/seed-data.ts`). Un aviso bajo la cabecera lo explica y permite **Restablecer demo**.
+- **Datos no fiables:** lo guardado se valida entero con los validadores de la web (textos, importes, fechas, que cada reparto salga igual al recalcularlo con `split()`) y con límites (10 grupos, 30 personas, 200 gastos y 100 pagos por grupo, 1 MB). Si algo no cuadra, se vuelve al ejemplo. El texto se pinta siempre con `textContent`, nunca como HTML.
+- **Seguridad y SEO:** CSP en `<meta>` con `script-src 'self'` y `style-src 'self'` (todo el JavaScript y el CSS en archivos), `referrer` `strict-origin-when-cross-origin` y `noindex, follow`: la página que se indexa es la del proyecto en el portfolio. La salida no lleva canónico, sitemap, `robots.txt`, `llms.txt` ni la imagen para redes sociales.
+- **Código:** páginas en `demo/` y almacén en `demo/lib/store.ts` (con sus pruebas en `tests/demo-store.test.ts`). Necesita JavaScript; sin él muestra un aviso.
 
 ## Seguridad y privacidad
 
@@ -118,9 +134,10 @@ Instala la versión WebAssembly del compilador en `node_modules` sin modificar `
 
 ```
 gastos-compartidos/
+├─ demo/                      Demo sin servidor: páginas, aviso y almacén en localStorage
 ├─ public/                    Favicon, icono y imagen para redes sociales
 ├─ scripts/
-│  ├─ seed.ts                 Grupo de ejemplo «Viaje a Lisboa»
+│  ├─ seed.ts                 Crea el grupo de ejemplo en la base de datos
 │  └─ fix-compiler.mjs        Arreglo del compilador de Astro en Windows
 ├─ src/
 │  ├─ components/             Marca y formulario de gasto (con su vista previa)
@@ -135,11 +152,13 @@ gastos-compartidos/
 │  │  ├─ expense-form.ts      Lectura y validación del formulario de gasto
 │  │  ├─ validate.ts          Validación de textos, fechas y límites
 │  │  ├─ rate-limit.ts        Límite de peticiones por IP
+│  │  ├─ seed-data.ts         Datos del ejemplo «Viaje a Lisboa» (web y demo)
 │  │  └─ ids.ts               Identificadores aleatorios de grupo
 │  ├─ middleware.ts           Cabeceras de seguridad, límites y noindex de los grupos
 │  ├─ pages/                  Portada, grupo, gastos, personas, 404/500, robots, sitemap y llms.txt
-│  └─ styles/global.css       Estilos y variables de color
-└─ tests/                     Pruebas de la lógica de dinero
+│  └─ styles/                 Estilos globales y de cada página (compartidos con la demo)
+├─ astro.config.demo.mjs      Configuración de la demo estática
+└─ tests/                     Pruebas de la lógica de dinero y de la demo
 ```
 
 ## Pruebas
@@ -148,11 +167,12 @@ gastos-compartidos/
 npm test
 ```
 
-36 pruebas con `node:test` sobre la lógica de dinero (`src/lib`), sin base de datos ni navegador:
+56 pruebas con `node:test` sobre la lógica de dinero (`src/lib`) y el almacén de la demo, sin base de datos ni navegador:
 
 - **Importes:** formato español (`1.284,60 €`, signo de los saldos), lectura de `12,5`, `12.5`, `1.284,60`, rechazo de negativos, cero, más de dos decimales y valores fuera de rango.
 - **Repartos:** céntimos sobrantes deterministas en partes iguales y por porcentajes (mayor resto), validación de que porcentajes e importes cuadran, y 2.000 casos aleatorios que comprueban que la suma de las partes es siempre el total.
 - **Saldos:** suman cero, los pagos registrados los acercan a cero y se detectan repartos inconsistentes.
+- **Demo:** el ejemplo es el mismo que el de `db:seed`, lo guardado se lee igual que se escribe, se rechazan datos manipulados (ids, textos con caracteres de control, repartos que no cuadran, pagos imposibles, tamaños excesivos, `__proto__`) volviendo al ejemplo, y los cambios aplican las mismas reglas que la web.
 - **Mínimo de transferencias:** casos donde el voraz falla y el exacto no, 500 casos aleatorios que comprueban que **cualquier plan deja todos los saldos a cero** con *n − 1* transferencias como mucho, 300 casos comparados con una búsqueda por fuerza bruta independiente, y el paso al voraz por encima de 20 personas.
 
 Hecho por [Rubén Tur](https://github.com/Ruben-Tur).

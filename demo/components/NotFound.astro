@@ -1,0 +1,32 @@
+---
+/**
+ * «No encontrado» de la demo (oculto hasta que el script lo muestra), con el aspecto de la página 404 de la web.
+ * En la demo, un grupo solo existe en el navegador donde se creó.
+ */
+---
+
+<div class="container page not-found" id="not-found" hidden>
+  <p class="mono muted">404</p>
+  <h1>No encontramos este grupo</h1>
+  <p>
+    En la demo, cada grupo se guarda solo en el navegador donde se creó, así que un enlace de otro navegador aquí no
+    funciona. Puedes abrir el ejemplo o crear tu propio grupo.
+  </p>
+  <p><a class="button" href={import.meta.env.BASE_URL}>Ir al inicio</a></p>
+</div>
+
+<style>
+  .not-found {
+    display: grid;
+    gap: var(--s4);
+    max-width: calc(36rem + 2 * var(--gutter));
+  }
+
+  .not-found[hidden] {
+    display: none;
+  }
+
+  .not-found h1 {
+    font-size: var(--text-xl);
+  }
+</style>

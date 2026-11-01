@@ -1,0 +1,17 @@
+/* Páginas de gasto (nuevo y edición). El formulario tiene sus propios estilos en ExpenseForm.astro. */
+
+/* .container.narrow: tiene que ganar al max-width de .container. */
+.container.narrow {
+  max-width: calc(46rem + 2 * var(--gutter));
+}
+
+.danger-zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+  margin-top: var(--s5);
+  padding-top: var(--s5);
+  border-top: 1px solid var(--line);
+}

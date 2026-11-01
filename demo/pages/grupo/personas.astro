@@ -1,0 +1,145 @@
+---
+/** Personas y nombre del grupo en la demo (?g=<id>): como src/pages/g/[id]/personas.astro, sin servidor. */
+import '../../../src/styles/people.css';
+import { LIMITS } from '../../../src/lib/validate.ts';
+import NotFound from '../../components/NotFound.astro';
+import Demo from '../../layouts/Demo.astro';
+---
+
+<Demo title="Personas">
+  <NotFound />
+  <div id="app" hidden>
+    <div class="container page narrow">
+      <div class="page-head">
+        <p class="breadcrumb"><a id="back" href="#">← <span id="back-name"></span></a></p>
+        <h1>Personas y grupo</h1>
+      </div>
+
+      <div id="messages"></div>
+
+      <section class="card block" aria-labelledby="personas">
+        <h2 id="personas" class="card__title">Personas</h2>
+        <ul role="list" class="people" id="people"></ul>
+        <p class="hint">Solo se puede quitar a quien todavía no aparece en ningún gasto ni pago.</p>
+
+        <form method="post" class="add" id="add-form" hidden>
+          <div class="field">
+            <label for="new-member">Añadir persona</label>
+            <div class="inline">
+              <input
+                id="new-member"
+                name="name"
+                type="text"
+                required
+                maxlength={LIMITS.memberName}
+                placeholder="Nombre"
+                autocomplete="off"
+              />
+              <button class="button" type="submit">Añadir</button>
+            </div>
+          </div>
+        </form>
+        <p class="hint" id="members-full" hidden>El grupo ya tiene el máximo de {LIMITS.membersPerGroup} personas.</p>
+      </section>
+
+      <section class="card block" aria-labelledby="grupo">
+        <h2 id="grupo" class="card__title">Nombre del grupo</h2>
+        <form method="post" id="group-form">
+          <label for="group-name" class="sr-only">Nombre del grupo</label>
+          <div class="inline">
+            <input id="group-name" name="name" type="text" required maxlength={LIMITS.groupName} />
+            <button class="button button--secondary" type="submit">Guardar</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </div>
+</Demo>
+
+<script>
+  import { LIMITS, requiredText } from '../../../src/lib/validate.ts';
+  import { boot, commit, currentGroup, go, h, routes, setTitle, showMessages, showNotFound, srOnly, userMessage } from '../../lib/app.ts';
+  import { addMember, DemoError, deleteMember, renameGroup, renameMember, type DemoState } from '../../lib/store.ts';
+
+  const loaded = boot();
+  const group = loaded && currentGroup(loaded.state);
+  const app = document.getElementById('app');
+  const messages = document.getElementById('messages');
+
+  if (loaded && !group) showNotFound();
+  if (group && app && messages) {
+    const id = group.id;
+
+    /** Mismas comprobaciones que la web: nombre limpio y con longitud válida. */
+    const checkName = (raw: string, label: string, max: number) => {
+      const checked = requiredText(raw.slice(0, 500), max, label);
+      if (!checked.ok) throw new DemoError(checked.error);
+      return checked.value;
+    };
+
+    /** Valida y guarda un cambio y vuelve a pintar la página con su mensaje, o enseña el error. */
+    const onSubmit = (form: HTMLFormElement, change: (state: DemoState) => void, ok: string) => {
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        try {
+          commit(change);
+          go(routes.people(id, ok));
+        } catch (e) {
+          showMessages(messages, userMessage(e));
+          messages.scrollIntoView({ block: 'nearest' });
+        }
+      });
+    };
+
+    setTitle(`Personas · ${group.name}`);
+    showMessages(messages);
+    const back = document.getElementById('back') as HTMLAnchorElement;
+    back.href = routes.group(id);
+    document.getElementById('back-name')!.textContent = group.name;
+
+    // Una fila por persona: cambiar el nombre y quitar.
+    document.getElementById('people')!.replaceChildren(
+      ...group.members.map((m) => {
+        const input = h('input', {
+          id: `name-${m.id}`,
+          name: 'name',
+          type: 'text',
+          required: true,
+          maxlength: LIMITS.memberName,
+        });
+        input.value = m.name;
+        const rename = h(
+          'form',
+          { method: 'post', class: 'person__rename' },
+          h('label', { class: 'sr-only', for: `name-${m.id}` }, `Nombre de ${m.name}`),
+          input,
+          h('button', { class: 'button button--small button--secondary', type: 'submit' }, 'Guardar', srOnly(` el nombre de ${m.name}`)),
+        );
+        onSubmit(rename, (state) => renameMember(state, id, m.id, checkName(input.value, 'un nombre', LIMITS.memberName)), 'persona-editada');
+
+        const remove = h('form', { method: 'post' }, h('button', { class: 'link-button', type: 'submit' }, 'Quitar', srOnly(` a ${m.name}`)));
+        onSubmit(remove, (state) => deleteMember(state, id, m.id), 'persona-borrada');
+
+        return h('li', { class: 'person' }, rename, remove);
+      }),
+    );
+
+    // Añadir persona, o aviso si el grupo está lleno.
+    const addForm = document.getElementById('add-form') as HTMLFormElement;
+    if (group.members.length < LIMITS.membersPerGroup) {
+      const input = document.getElementById('new-member') as HTMLInputElement;
+      onSubmit(addForm, (state) => addMember(state, id, checkName(input.value, 'un nombre', LIMITS.memberName)), 'persona');
+      addForm.hidden = false;
+    } else {
+      document.getElementById('members-full')!.hidden = false;
+    }
+
+    // Nombre del grupo
+    const groupForm = document.getElementById('group-form') as HTMLFormElement;
+    const groupName = document.getElementById('group-name') as HTMLInputElement;
+    groupName.value = group.name;
+    onSubmit(groupForm, (state) => renameGroup(state, id, checkName(groupName.value, 'un nombre para el grupo', LIMITS.groupName)), 'grupo-editado');
+
+    app.hidden = false;
+  }
+</script>

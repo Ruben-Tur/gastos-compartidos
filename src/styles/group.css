@@ -1,0 +1,267 @@
+/* Página del grupo: gastos, plan para quedar en paz, saldos y pagos. La usan la web y la demo. */
+
+.flash {
+  margin-bottom: var(--s5);
+}
+
+/* Móvil y tablet: una columna con lo más útil arriba (plan y saldos), luego gastos, pagos y compartir. */
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+}
+
+.group__side {
+  display: contents;
+}
+
+.plan {
+  order: 1;
+}
+
+.balances {
+  order: 2;
+}
+
+.group__expenses {
+  order: 3;
+}
+
+#pagos {
+  order: 4;
+}
+
+.share {
+  order: 5;
+}
+
+/* Escritorio: gastos a la izquierda y tarjetas de saldos a la derecha. */
+@media (min-width: 900px) {
+  .group {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    grid-template-areas: 'head side' 'expenses side';
+    grid-template-rows: auto 1fr;
+    gap: var(--s6) var(--s7);
+    align-items: start;
+  }
+
+  .group__side {
+    grid-area: side;
+    display: grid;
+    gap: var(--s5);
+    min-width: 0;
+  }
+
+  .group__head {
+    grid-area: head;
+  }
+
+  .group__expenses {
+    grid-area: expenses;
+  }
+}
+
+.group__head {
+  display: grid;
+  gap: var(--s2);
+}
+
+.group__head h1 {
+  font-size: var(--text-xl);
+  overflow-wrap: anywhere;
+}
+
+.group__meta {
+  color: var(--muted);
+}
+
+.group__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+  margin-top: var(--s3);
+}
+
+.group__expenses {
+  min-width: 0;
+}
+
+.section-title {
+  font-size: var(--text-lg);
+  padding-bottom: var(--s3);
+  border-bottom: 1px solid var(--line);
+}
+
+.empty {
+  padding-block: var(--s5);
+  color: var(--muted);
+}
+
+/* ---------- Gastos ---------- */
+
+.expenses li + li {
+  border-top: 1px solid var(--line);
+}
+
+.expense {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s1) var(--s4);
+  padding: var(--s4) var(--s2);
+  margin-inline: calc(-1 * var(--s2));
+  border-radius: var(--radius);
+  text-decoration: none;
+}
+
+.expense:hover {
+  background: var(--surface);
+}
+
+.expense__main {
+  font-size: var(--text-md);
+  overflow-wrap: anywhere;
+}
+
+.expense__concept {
+  font-weight: 500;
+}
+
+.expense__meta {
+  grid-column: 1;
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.expense__amount {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  font-size: var(--text-md);
+}
+
+/* ---------- Plan para quedar en paz ---------- */
+
+.plan__list {
+  border-top: 1px solid var(--accent-line);
+}
+
+.plan__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s2) var(--s4);
+  padding-block: var(--s4);
+  border-bottom: 1px solid var(--accent-line);
+}
+
+.plan__who {
+  font-size: var(--text-md);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.plan__arrow {
+  color: var(--muted);
+  margin-inline: var(--s1);
+}
+
+.plan__amount {
+  font-size: var(--text-md);
+  font-weight: 600;
+}
+
+.plan__form {
+  grid-column: 1 / -1;
+}
+
+.plan__note,
+.plan__done {
+  margin-top: var(--s4);
+  font-size: var(--text-sm);
+  color: var(--muted);
+}
+
+.plan__done {
+  margin-top: 0;
+}
+
+/* ---------- Saldos ---------- */
+
+.balances__list {
+  display: grid;
+  gap: var(--s3);
+  margin-bottom: var(--s4);
+}
+
+.balance {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 1fr) minmax(3rem, 1.2fr) auto;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.balance__name {
+  overflow-wrap: anywhere;
+}
+
+.balance__bar {
+  width: 100%;
+  height: 0.5rem;
+}
+
+.balance__axis {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.balance__pos {
+  fill: var(--positive);
+}
+
+.balance__neg {
+  fill: var(--negative);
+}
+
+.balance__amount {
+  min-width: 7.5rem;
+}
+
+/* ---------- Pagos registrados ---------- */
+
+.settlements {
+  display: grid;
+  gap: var(--s3);
+}
+
+.settlement {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: var(--s1) var(--s3);
+}
+
+/* ---------- Compartir ---------- */
+
+.share__row {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s3);
+}
+
+/* Más específico que input[type='text'] de global.css, que si no ganaría. */
+.share__row .share__url {
+  min-width: 0;
+  font-size: var(--text-sm);
+  background: var(--bg);
+}
+
+.share__status:empty {
+  display: none;
+}
+
+.share__status {
+  margin-top: var(--s2);
+}

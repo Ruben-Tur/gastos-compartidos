@@ -8,6 +8,8 @@ interface Props {
   description?: string;
   /** Páginas de grupo: privadas, sin indexar ni enlace canónico. */
   private?: boolean;
+  /** Valor de la meta robots (p. ej. la demo: «noindex, follow»). Con él no hay enlace canónico ni Open Graph. */
+  robots?: string;
 }
 
 const APP = 'Cuentas claras';
@@ -15,9 +17,13 @@ const DEFAULT_DESCRIPTION =
   'Reparte los gastos de un viaje, una cena o un piso compartido y calcula el mínimo de transferencias para quedar en paz. Gratis y sin registrarse.';
 
 const { title, description = DEFAULT_DESCRIPTION, private: isPrivate = false } = Astro.props;
+const robots = Astro.props.robots ?? (isPrivate ? 'noindex, nofollow' : undefined);
 const fullTitle = title ? `${title} · ${APP}` : `${APP} · Reparte gastos compartidos sin líos`;
-const canonical = new URL(Astro.url.pathname, Astro.site);
-const ogImage = new URL('/og.png', Astro.site);
+// Solo las páginas indexables necesitan el dominio (la demo estática se compila sin `site`).
+const canonical = robots ? null : new URL(Astro.url.pathname, Astro.site);
+const ogImage = robots ? null : new URL('/og.png', Astro.site);
+// Ruta base: «/» en la web; la demo vive en una subcarpeta (astro.config.demo.mjs).
+const base = import.meta.env.BASE_URL.replace(/\/?$/, '/');
 ---
 
 <!doctype html>
@@ -27,13 +33,13 @@ const ogImage = new URL('/og.png', Astro.site);
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
-    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="icon" href={`${base}favicon.svg`} type="image/svg+xml" />
+    <link rel="apple-touch-icon" href={`${base}apple-touch-icon.png`} />
     <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
     <meta name="theme-color" content="#141412" media="(prefers-color-scheme: dark)" />
     {
-      isPrivate ? (
-        <meta name="robots" content="noindex, nofollow" />
+      robots ? (
+        <meta name="robots" content={robots} />
       ) : (
         <>
           <link rel="canonical" href={canonical} />
@@ -63,6 +69,7 @@ const ogImage = new URL('/og.png', Astro.site);
         <slot name="header-end" />
       </div>
     </header>
+    <slot name="banner" />
     <main id="contenido">
       <slot />
     </main>

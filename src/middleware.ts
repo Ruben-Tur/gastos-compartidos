@@ -21,6 +21,11 @@ function isPrivatePath(pathname: string) {
 /** Igual que bodySizeLimit en astro.config.mjs. */
 const MAX_BODY_BYTES = 64 * 1024;
 
+function isUrlEncodedForm(request: Request) {
+  const type = request.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+  return type === 'application/x-www-form-urlencoded';
+}
+
 function plain(status: number, message: string, headers: Record<string, string> = {}) {
   return new Response(message, { status, headers: { 'Content-Type': 'text/plain; charset=utf-8', ...headers } });
 }
@@ -39,6 +44,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
     } else if (Number(request.headers.get('content-length') ?? 0) > MAX_BODY_BYTES) {
       // Lo mismo corta el adaptador (bodySizeLimit) sin Content-Length; aquí se responde 413 sin leer nada.
       response = plain(413, 'El formulario es demasiado grande.');
+    } else if (!isUrlEncodedForm(request)) {
+      // Todos los formularios de la web se envían así. Otro tipo (JSON, multipart mal formado…) hacía
+      // fallar request.formData() en la página y salía un 500.
+      response = plain(415, 'Tipo de envío no admitido.');
     } else {
       response = await next();
     }

@@ -47,12 +47,32 @@
   --radius: 4px;
   --radius-card: 10px;
   --container: 72rem;
-  --gutter: 1rem;
+  /*
+   * Saltos de la web (los mismos que el portfolio): escritorio (> 1440 px), portátil (≤ 1440),
+   * tablet (≤ 1024) y móvil (≤ 767). --pad-y: relleno vertical de la página · --gutter: relleno lateral.
+   */
+  --pad-y: 120px;
+  --gutter: 100px;
 }
 
-@media (min-width: 768px) {
+@media (max-width: 1440px) {
   :root {
-    --gutter: 2rem;
+    --pad-y: 100px;
+    --gutter: 80px;
+  }
+}
+
+@media (max-width: 1024px) {
+  :root {
+    --pad-y: 80px;
+    --gutter: 40px;
+  }
+}
+
+@media (max-width: 767px) {
+  :root {
+    --pad-y: 60px;
+    --gutter: 20px;
   }
 }
 
@@ -306,6 +326,8 @@ ol[role='list'] {
 }
 
 .link-button {
+  /* Zona táctil suficiente («Quitar», «Deshacer») aunque parezca un enlace. */
+  min-height: 2.25rem;
   padding: 0;
   border: 0;
   background: none;
@@ -442,7 +464,6 @@ input[type='radio'] {
 }
 
 .site-footer {
-  margin-top: var(--s7);
   border-top: 1px solid var(--line);
   font-size: var(--text-sm);
   color: var(--muted);
@@ -458,14 +479,9 @@ input[type='radio'] {
 
 /* ---------- Página ---------- */
 
+/* Un solo relleno arriba y abajo de cada página (el pie no añade margen: nada de relleno doble). */
 .page {
-  padding-block: var(--s6) 0;
-}
-
-@media (min-width: 768px) {
-  .page {
-    padding-block: var(--s7) 0;
-  }
+  padding-block: var(--pad-y);
 }
 
 .page-head {

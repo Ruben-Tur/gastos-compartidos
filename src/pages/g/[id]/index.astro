@@ -1,7 +1,7 @@
 ---
 import Base from '../../../layouts/Base.astro';
 import '../../../styles/group.css';
-import { FLASH, formatDate, MODE_LABELS, moneyClass, plural } from '../../../lib/format.ts';
+import { flashMessage, formatDate, MODE_LABELS, moneyClass, plural } from '../../../lib/format.ts';
 import { addSettlement, deleteSettlement, getGroupData, UserError } from '../../../lib/groups.ts';
 import { isGroupId } from '../../../lib/ids.ts';
 import { formatEuros } from '../../../lib/money.ts';
@@ -48,7 +48,7 @@ if (!data) return Astro.rewrite('/404');
 
 const { group, members, expenses, settlements, balances, plan, totalCents } = data;
 const nameOf = new Map(members.map((m) => [m.id, m.name]));
-const flash = FLASH[Astro.url.searchParams.get('ok') ?? ''];
+const flash = flashMessage(Astro.url.searchParams.get('ok'));
 const shareUrl = new URL(`/g/${id}`, Astro.url).href;
 const maxAbs = Math.max(1, ...balances.map((b) => Math.abs(b.cents)));
 // Plan ordenado por quien paga y luego quien cobra, en el orden del grupo: más fácil de leer.

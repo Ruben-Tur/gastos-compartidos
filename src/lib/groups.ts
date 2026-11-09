@@ -173,6 +173,17 @@ function isUniqueViolation(error: unknown) {
   return error instanceof Error && /UNIQUE constraint failed/i.test(error.message);
 }
 
+/**
+ * Nombres repetidos sin distinguir mayúsculas, también con tildes y eñes: el índice UNIQUE de SQLite
+ * (COLLATE NOCASE) solo pliega letras ASCII y dejaba tener a la vez «Ángel» y «ángel». Es la misma
+ * regla que al crear el grupo (parseMemberNames) y que la demo.
+ */
+async function checkFreeName(groupId: string, name: string, exceptId?: number) {
+  const key = name.toLocaleLowerCase('es');
+  const taken = (await getMembers(groupId)).some((m) => m.id !== exceptId && m.name.toLocaleLowerCase('es') === key);
+  if (taken) throw new UserError(`Ya hay alguien que se llama «${name}» en el grupo.`);
+}
+
 export async function addMember(groupId: string, name: string) {
   const c = await db();
   const { rows } = await c.execute({
@@ -182,6 +193,7 @@ export async function addMember(groupId: string, name: string) {
   if (num(rows[0], 'total') >= LIMITS.membersPerGroup) {
     throw new UserError(`El grupo ya tiene el máximo de ${LIMITS.membersPerGroup} personas.`);
   }
+  await checkFreeName(groupId, name);
   try {
     await c.execute({
       sql: 'INSERT INTO members (group_id, name, position) VALUES (?, ?, ?)',
@@ -195,6 +207,7 @@ export async function addMember(groupId: string, name: string) {
 
 export async function renameMember(groupId: string, memberId: number, name: string) {
   const c = await db();
+  await checkFreeName(groupId, name, memberId);
   try {
     const result = await c.execute({
       sql: 'UPDATE members SET name = ? WHERE id = ? AND group_id = ?',
@@ -212,12 +225,16 @@ export async function deleteMember(groupId: string, memberId: number) {
   const c = await db();
   const { rows } = await c.execute({
     sql: `SELECT
+            (SELECT COUNT(*) FROM members WHERE id = :m AND group_id = :g) AS mine,
             (SELECT COUNT(*) FROM expenses WHERE payer_id = :m)
           + (SELECT COUNT(*) FROM expense_shares WHERE member_id = :m)
           + (SELECT COUNT(*) FROM settlements WHERE from_id = :m OR to_id = :m) AS uses,
             (SELECT COUNT(*) FROM members WHERE group_id = :g) AS total`,
     args: { m: memberId, g: groupId },
   });
+  // Sin esta comprobación, un id de otro grupo daba «Persona quitada del grupo» sin borrar nada
+  // (o el mensaje de «ya aparece en gastos» por los gastos del otro grupo).
+  if (num(rows[0], 'mine') === 0) throw new UserError('Esa persona no está en el grupo.');
   if (num(rows[0], 'uses') > 0) {
     throw new UserError('No se puede quitar a alguien que ya aparece en gastos o pagos. Puedes cambiarle el nombre.');
   }

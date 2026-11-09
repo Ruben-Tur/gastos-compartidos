@@ -359,6 +359,7 @@ export function renameMember(state: DemoState, groupId: string, memberId: number
 /** Solo se puede quitar a alguien que no aparece en ningún gasto ni pago: si no, los saldos cambiarían. */
 export function deleteMember(state: DemoState, groupId: string, memberId: number) {
   const group = requireGroup(state, groupId);
+  if (!group.members.some((m) => m.id === memberId)) throw new DemoError('Esa persona no está en el grupo.');
   const used =
     group.expenses.some((e) => e.payerId === memberId || e.shares.some((s) => s.memberId === memberId)) ||
     group.settlements.some((s) => s.fromId === memberId || s.toId === memberId);

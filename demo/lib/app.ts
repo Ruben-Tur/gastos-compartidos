@@ -3,7 +3,7 @@
  * localStorage, mensajes y creación de elementos. Todo el texto del usuario se pinta con
  * textContent o atributos, nunca con innerHTML.
  */
-import { FLASH } from '../../src/lib/format.ts';
+import { FLASH, flashMessage as flashFor } from '../../src/lib/format.ts';
 import { DemoError, findGroup, loadState, saveState, SEED_GROUP_ID, type DemoGroup, type DemoState } from './store.ts';
 
 // ---------------------------------------------------------------------------
@@ -86,8 +86,7 @@ const MESSAGES: Record<string, string> = {
 };
 
 export function flashMessage(): string | null {
-  const key = param('ok') ?? '';
-  return Object.hasOwn(MESSAGES, key) ? MESSAGES[key] : null;
+  return flashFor(param('ok'), MESSAGES);
 }
 
 /** Pinta el aviso tras un cambio y, si lo hay, el error (como hace la web al volver a pintar la página). */

@@ -127,7 +127,7 @@ npm run build:demo
 - **CSRF:** `security.checkOrigin` de Astro rechaza los envíos de formularios desde otros orígenes.
 - **CSP estricta** sin `unsafe-inline`: Astro calcula el hash de cada script y estilo propio. Sin recursos de terceros (ni CDNs, ni analítica, ni fuentes externas).
 - **Validación en servidor** de todos los campos (longitudes, formato de importes y fechas, rangos, que las personas sean del grupo) y salida siempre escapada por Astro. Las consultas SQL son parametrizadas.
-- **Límites:** 10 grupos nuevos por hora y 120 envíos de formularios cada 10 minutos por IP (en memoria, para un único proceso); cuerpo de petición de 64 KB como máximo; 30 personas, 1.000 gastos y 500 pagos por grupo; importes entre 0,01 € y 1.000.000,00 €.
+- **Límites:** 10 grupos nuevos por hora y 120 envíos de formularios cada 10 minutos por IP (en memoria, para un único proceso); cuerpo de petición de 64 KB como máximo y solo `application/x-www-form-urlencoded` (cualquier otro tipo recibe un 415); 30 personas, 1.000 gastos y 500 pagos por grupo; importes entre 0,01 € y 1.000.000,00 €.
 - Cabeceras `X-Content-Type-Options`, `X-Frame-Options`, `frame-ancestors 'none'`, `Permissions-Policy`, `Cross-Origin-Opener-Policy` y HSTS en producción con HTTPS. Los errores muestran una página genérica, sin trazas.
 
 ## Estructura
@@ -167,12 +167,13 @@ gastos-compartidos/
 npm test
 ```
 
-56 pruebas con `node:test` sobre la lógica de dinero (`src/lib`) y el almacén de la demo, sin base de datos ni navegador:
+58 pruebas con `node:test` sobre la lógica de dinero (`src/lib`) y el almacén de la demo, sin base de datos ni navegador:
 
 - **Importes:** formato español (`1.284,60 €`, signo de los saldos), lectura de `12,5`, `12.5`, `1.284,60`, rechazo de negativos, cero, más de dos decimales y valores fuera de rango.
 - **Repartos:** céntimos sobrantes deterministas en partes iguales y por porcentajes (mayor resto), validación de que porcentajes e importes cuadran, y 2.000 casos aleatorios que comprueban que la suma de las partes es siempre el total.
 - **Saldos:** suman cero, los pagos registrados los acercan a cero y se detectan repartos inconsistentes.
 - **Demo:** el ejemplo es el mismo que el de `db:seed`, lo guardado se lee igual que se escribe, se rechazan datos manipulados (ids, textos con caracteres de control, repartos que no cuadran, pagos imposibles, tamaños excesivos, `__proto__`) volviendo al ejemplo, y los cambios aplican las mismas reglas que la web.
+- **Avisos tras redirigir:** `?ok=` solo muestra textos fijos; las claves del prototipo (`constructor`, `__proto__`…) no pintan nada.
 - **Mínimo de transferencias:** casos donde el voraz falla y el exacto no, 500 casos aleatorios que comprueban que **cualquier plan deja todos los saldos a cero** con *n − 1* transferencias como mucho, 300 casos comparados con una búsqueda por fuerza bruta independiente, y el paso al voraz por encima de 20 personas.
 
 Hecho por [Rubén Tur](https://github.com/Ruben-Tur).

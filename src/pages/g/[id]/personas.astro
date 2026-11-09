@@ -1,7 +1,7 @@
 ---
 import Base from '../../../layouts/Base.astro';
 import '../../../styles/people.css';
-import { FLASH } from '../../../lib/format.ts';
+import { flashMessage } from '../../../lib/format.ts';
 import { addMember, deleteMember, getGroup, getMembers, renameGroup, renameMember, UserError } from '../../../lib/groups.ts';
 import { isGroupId } from '../../../lib/ids.ts';
 import { field, LIMITS, parseId, requiredText } from '../../../lib/validate.ts';
@@ -12,6 +12,8 @@ const group = await getGroup(id);
 if (!group) return Astro.rewrite('/404');
 
 let error: string | null = null;
+/** Si falla «Añadir persona», el nombre escrito se vuelve a pintar en el campo para corregirlo. */
+let newName: string | null = null;
 
 if (Astro.request.method === 'POST') {
   const form = await Astro.request.formData();
@@ -47,12 +49,13 @@ if (Astro.request.method === 'POST') {
   } catch (e) {
     if (!(e instanceof UserError)) throw e;
     error = e.message;
+    if (action === 'add') newName = field(form, 'name').slice(0, 500);
     Astro.response.status = 422;
   }
 }
 
 const members = await getMembers(id);
-const flash = FLASH[Astro.url.searchParams.get('ok') ?? ''];
+const flash = flashMessage(Astro.url.searchParams.get('ok'));
 ---
 
 <Base title={`Personas · ${group.name}`} private>
@@ -65,7 +68,7 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? ''];
     {flash && <p class="notice flash" role="status">{flash}</p>}
     {
       error && (
-        <p class="notice notice--error flash" role="alert">
+        <p class="notice notice--error flash" role="alert" id="error">
           <strong>No se ha podido hacer:</strong> {error}
         </p>
       )
@@ -116,6 +119,9 @@ const flash = FLASH[Astro.url.searchParams.get('ok') ?? ''];
                   maxlength={LIMITS.memberName}
                   placeholder="Nombre"
                   autocomplete="off"
+                  value={newName ?? ''}
+                  aria-invalid={newName !== null ? 'true' : undefined}
+                  aria-describedby={newName !== null ? 'error' : undefined}
                 />
                 <button class="button" type="submit">
                   Añadir

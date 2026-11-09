@@ -224,6 +224,7 @@ describe('demo: cambios', () => {
     assert.throws(() => renameMember(state, SEED_GROUP_ID, eva.id, 'Luis'), /Ya hay alguien/);
     renameMember(state, SEED_GROUP_ID, eva.id, 'Eva G.');
     assert.throws(() => deleteMember(state, SEED_GROUP_ID, 1), /No se puede quitar/);
+    assert.throws(() => deleteMember(state, SEED_GROUP_ID, 9999), /no está en el grupo/);
     deleteMember(state, SEED_GROUP_ID, eva.id);
     assert.equal(seedGroup(state).members.length, 4);
 

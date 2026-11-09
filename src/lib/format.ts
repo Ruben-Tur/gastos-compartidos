@@ -38,3 +38,11 @@ export const FLASH: Record<string, string> = {
   'persona-borrada': 'Persona quitada del grupo.',
   'grupo-editado': 'Nombre del grupo cambiado.',
 };
+
+/**
+ * Mensaje fijo para el valor de ?ok=, o null. Con Object.hasOwn: un FLASH[clave] directo devolvería
+ * cosas del prototipo (?ok=constructor pintaba «[object Object]» o el código de una función).
+ */
+export function flashMessage(key: string | null, messages: Record<string, string> = FLASH): string | null {
+  return key !== null && Object.hasOwn(messages, key) ? messages[key] : null;
+}
